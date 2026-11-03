@@ -3,6 +3,7 @@ import express from 'express';
 import { generateRouter } from './routes/generate.js';
 import { extractRouter } from './routes/extract.js';
 import { aduLawMcpRouter } from './otari/mcp.js';
+import { otariRouter } from './routes/otari.js';
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.get('/health', (req, res) => {
 app.use('/generate', generateRouter);
 app.use('/extract', extractRouter);
 app.use('/api/mcp/adu-law', aduLawMcpRouter);
+app.use('/api/otari', otariRouter);
 
 // Error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

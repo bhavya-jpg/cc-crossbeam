@@ -41,6 +41,19 @@ export async function updateProjectStatus(
   }
 }
 
+/** The project's `[OTARI_TELEMETRY]` message bodies, oldest first. */
+export async function getTelemetryMessages(projectId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .schema('crossbeam')
+    .from('messages')
+    .select('content')
+    .eq('project_id', projectId)
+    .like('content', '[OTARI_TELEMETRY]%')
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row: { content: string }) => row.content);
+}
+
 export async function getProject(projectId: string) {
   const { data, error } = await supabase
     .schema('crossbeam')

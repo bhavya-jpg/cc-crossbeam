@@ -70,6 +70,7 @@ jobs:
             --set-env-vars "OTARI_MASTER_KEY=${{ secrets.OTARI_MASTER_KEY }}" \
             --set-env-vars "OTARI_MCP_PUBLIC_URL=${{ secrets.OTARI_MCP_PUBLIC_URL }}" \
             --set-env-vars "MCP_ADU_LAW_TOKEN=${{ secrets.MCP_ADU_LAW_TOKEN }}" \
+            --set-env-vars "OTARI_INSPECTOR_TOKEN=${{ secrets.OTARI_INSPECTOR_TOKEN }}" \
             --allow-unauthenticated
 
       - name: Show Output

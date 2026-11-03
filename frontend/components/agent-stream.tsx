@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useRealtimeAuth } from '@/lib/supabase/use-realtime-auth'
 import { BrainIcon, WrenchIcon, SettingsIcon, ClockIcon } from 'lucide-react'
+import { isTelemetryMessage } from '@/lib/otari-telemetry'
 import { cn } from '@/lib/utils'
 
 interface Message {
@@ -142,7 +143,9 @@ export function AgentStream({ projectId }: AgentStreamProps) {
     })
   }
 
-  const isStale = staleSeconds * 1000 >= STALE_THRESHOLD_MS && messages.length > 0
+  // Telemetry belongs to the Otari Inspector, not the activity feed.
+  const activity = messages.filter((msg) => !isTelemetryMessage(msg.content))
+  const isStale = staleSeconds * 1000 >= STALE_THRESHOLD_MS && activity.length > 0
 
   return (
     <div className="flex flex-col h-full max-h-[400px] bg-card rounded-xl shadow-[0_8px_32px_rgba(28,25,23,0.08)] border border-border/50 overflow-hidden">
@@ -154,7 +157,7 @@ export function AgentStream({ projectId }: AgentStreamProps) {
         )} />
         <span className="text-base font-semibold text-foreground font-body">Live Activity</span>
         <span className="text-sm text-muted-foreground font-body ml-auto">
-          {messages.length} events
+          {activity.length} events
         </span>
       </div>
 
@@ -163,7 +166,7 @@ export function AgentStream({ projectId }: AgentStreamProps) {
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin"
       >
-        {messages.length === 0 ? (
+        {activity.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 py-12">
             <div className="relative">
               <div className="w-4 h-4 rounded-full bg-primary animate-ping absolute" />
@@ -175,10 +178,10 @@ export function AgentStream({ projectId }: AgentStreamProps) {
           </div>
         ) : (
           <>
-            {messages.map((msg, index) => {
+            {activity.map((msg, index) => {
               const config = roleConfig[msg.role] || roleConfig.system
               const Icon = config.icon
-              const isLatest = index === messages.length - 1
+              const isLatest = index === activity.length - 1
 
               return (
                 <div

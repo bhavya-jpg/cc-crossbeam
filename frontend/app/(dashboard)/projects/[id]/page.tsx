@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { OtariInspectorDrawer } from '@/components/otari-inspector-drawer'
 import { createClient } from '@/lib/supabase/server'
 import { ProjectDetailClient } from './project-detail-client'
 
@@ -36,11 +37,19 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
     .order('created_at', { ascending: true })
 
   return (
-    <ProjectDetailClient
-      initialProject={project}
-      initialFiles={files || []}
-      userId={user.id}
-      showcaseOutputId={showcase}
-    />
+    <>
+      <ProjectDetailClient
+        initialProject={project}
+        initialFiles={files || []}
+        userId={user.id}
+        showcaseOutputId={showcase}
+      />
+      {!showcase && (
+        <OtariInspectorDrawer
+          projectId={project.id}
+          defaultOpen={String(project.status).startsWith('processing')}
+        />
+      )}
+    </>
   )
 }

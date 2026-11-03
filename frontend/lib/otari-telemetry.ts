@@ -1,0 +1,209 @@
+/**
+ * Reads the `[OTARI_TELEMETRY]` messages the server's runner writes to the project's
+ * message stream, and reduces them to what the Inspector shows. Pure, so the server's
+ * tests can check it against real runner output.
+ */
+
+export const TELEMETRY_PREFIX = '[OTARI_TELEMETRY] '
+
+export const OTARI_ROLES = [
+  { id: 'extractor', label: 'Extractor', job: 'Reads letters and plans' },
+  { id: 'researcher', label: 'Researcher', job: 'City code lookup' },
+  { id: 'analyst', label: 'Analyst', job: 'Setback and coverage checks' },
+  { id: 'drafter', label: 'Drafter', job: 'Law and deliverables' },
+] as const
+
+export type OtariRoleId = (typeof OTARI_ROLES)[number]['id']
+export type DemoScenario = 'guardrail-block' | 'provider-failover' | 'exhausted-key'
+
+export interface OtariTelemetryEvent {
+  messageId: number
+  role: OtariRoleId
+  model: string | null
+  provider: string | null
+  requestId: string | null
+  fallback: boolean
+  gatewayFallback: boolean
+  attemptCount: number | null
+  attempt: number
+  guardrailsVerdict: string | null
+  guardrailMode: 'monitor' | 'block' | null
+  blocked: boolean
+  budgetHold: boolean
+  budgetScope: string | null
+  errorCode: string | null
+  error: string | null
+  containerId: string | null
+  containerExpiresAt: string | null
+  costUsd: number
+  costSource: 'reported' | 'estimated'
+  status: number
+  simulated: boolean
+  conversationId: string
+  keyLabel: string
+  keySource: 'contractor' | 'workspace' | 'simulated'
+  budgetCapUsd: number
+  demoScenario: DemoScenario | null
+}
+
+export function isTelemetryMessage(content: string): boolean {
+  return content.startsWith(TELEMETRY_PREFIX)
+}
+
+export function parseTelemetry(messages: Array<{ id: number; content: string }>): OtariTelemetryEvent[] {
+  return messages.flatMap(({ id, content }) => {
+    if (!isTelemetryMessage(content)) return []
+    try {
+      const event = JSON.parse(content.slice(TELEMETRY_PREFIX.length)) as Omit<OtariTelemetryEvent, 'messageId'>
+      return OTARI_ROLES.some((role) => role.id === event.role) ? [{ ...event, messageId: id }] : []
+    } catch {
+      return []
+    }
+  })
+}
+
+export interface RoleSummary {
+  model: string | null
+  provider: string | null
+  /** Highest `Otari-Attempt-Count` the gateway reported. */
+  gatewayAttempts: number | null
+  /** Models or tool sets this client tried for the role's latest call. */
+  clientAttempts: number
+  failover: boolean
+  gatewayFallback: boolean
+  status: number
+  errorCode: string | null
+  calls: number
+  simulated: boolean
+  demo: boolean
+}
+
+export type GuardrailTone = 'none' | 'passed' | 'warning' | 'blocked'
+
+export interface GuardrailSummary {
+  label: string
+  tone: GuardrailTone
+  simulated: boolean
+}
+
+export interface ContainerSummary {
+  id: string
+  expiresAt: string | null
+  turns: number
+  reused: boolean
+  simulated: boolean
+}
+
+export interface BudgetSummary {
+  keyLabel: string
+  keySource: OtariTelemetryEvent['keySource']
+  spentUsd: number
+  capUsd: number
+  percent: number
+  state: 'ok' | 'over-cap' | 'hold'
+  holdStatus: number | null
+  holdCode: string | null
+  holdScope: string | null
+  holdMessage: string | null
+  simulated: boolean
+}
+
+export interface TelemetrySummary {
+  roles: Partial<Record<OtariRoleId, RoleSummary>>
+  guardrail: GuardrailSummary
+  container: ContainerSummary | null
+  budget: BudgetSummary | null
+}
+
+/** A run's events, plus any demos layered over it. Earlier runs stay in the Trace Explorer. */
+function inScope(events: OtariTelemetryEvent[]): OtariTelemetryEvent[] {
+  const runs = events.filter((event) => !event.demoScenario)
+  const latestRun = runs[runs.length - 1]?.conversationId
+  return events.filter((event) => event.demoScenario || event.conversationId === latestRun)
+}
+
+function summarizeRole(events: OtariTelemetryEvent[]): RoleSummary | undefined {
+  const last = events[events.length - 1]
+  if (!last) return undefined
+  const sameRun = events.filter((event) => event.conversationId === last.conversationId)
+  const gatewayCounts = sameRun.flatMap((event) => (event.attemptCount === null ? [] : [event.attemptCount]))
+  return {
+    model: last.model,
+    provider: last.provider,
+    gatewayAttempts: gatewayCounts.length ? Math.max(...gatewayCounts) : null,
+    clientAttempts: Math.max(...sameRun.map((event) => event.attempt)),
+    failover: sameRun.some((event) => event.fallback),
+    gatewayFallback: sameRun.some((event) => event.gatewayFallback),
+    status: last.status,
+    errorCode: last.errorCode,
+    calls: sameRun.length,
+    simulated: last.simulated,
+    demo: Boolean(last.demoScenario),
+  }
+}
+
+function summarizeGuardrail(events: OtariTelemetryEvent[]): GuardrailSummary {
+  // A call refused for funds never reached the guardrail, so it says nothing about it.
+  const relevant = events.filter((event) => event.blocked || event.guardrailsVerdict)
+  const last = relevant[relevant.length - 1]
+  if (!last) return { label: 'No guardrail result yet', tone: 'none', simulated: false }
+  if (last.blocked) {
+    return { label: `${last.status} Blocked — Prompt Injection Detected`, tone: 'blocked', simulated: last.simulated }
+  }
+  const verdict = last.guardrailsVerdict as string
+  return {
+    label: `${last.guardrailMode ?? 'monitor'}: ${verdict}`,
+    tone: verdict === 'passed' ? 'passed' : verdict === 'flagged' ? 'blocked' : 'warning',
+    simulated: last.simulated,
+  }
+}
+
+function summarizeContainer(events: OtariTelemetryEvent[]): ContainerSummary | null {
+  const withContainer = events.filter((event) => event.containerId)
+  const last = withContainer[withContainer.length - 1]
+  if (!last?.containerId) return null
+  const turns = withContainer.filter((event) => event.containerId === last.containerId).length
+  return { id: last.containerId, expiresAt: last.containerExpiresAt, turns, reused: turns > 1, simulated: last.simulated }
+}
+
+function summarizeBudget(events: OtariTelemetryEvent[]): BudgetSummary | null {
+  const last = events[events.length - 1]
+  if (!last) return null
+  const spentUsd = events
+    .filter((event) => event.keyLabel === last.keyLabel)
+    .reduce((sum, event) => sum + event.costUsd, 0)
+  const state = last.budgetHold ? 'hold' : spentUsd > last.budgetCapUsd ? 'over-cap' : 'ok'
+  return {
+    keyLabel: last.keyLabel,
+    keySource: last.keySource,
+    spentUsd,
+    capUsd: last.budgetCapUsd,
+    percent: state === 'ok' ? Math.min(100, (spentUsd / last.budgetCapUsd) * 100) : 100,
+    state,
+    holdStatus: last.budgetHold ? last.status : null,
+    holdCode: last.budgetHold ? last.errorCode : null,
+    holdScope: last.budgetHold ? last.budgetScope : null,
+    holdMessage: last.budgetHold ? last.error : null,
+    simulated: last.simulated,
+  }
+}
+
+export function summarizeTelemetry(allEvents: OtariTelemetryEvent[]): TelemetrySummary {
+  const events = inScope(allEvents)
+  const roles: TelemetrySummary['roles'] = {}
+  for (const { id } of OTARI_ROLES) {
+    const summary = summarizeRole(events.filter((event) => event.role === id))
+    if (summary) roles[id] = summary
+  }
+  return {
+    roles,
+    guardrail: summarizeGuardrail(events),
+    container: summarizeContainer(events),
+    budget: summarizeBudget(events),
+  }
+}
+
+/** Conversation IDs, most recent first. */
+export function listConversations(events: OtariTelemetryEvent[]): string[] {
+  return [...new Set(events.map((event) => event.conversationId).reverse())]
+}
