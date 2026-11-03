@@ -10,6 +10,9 @@ observed yet.
 
 ## 1. API reference pages return HTTP 500
 
+**Status: resolved.** Every page below returned 200 when rechecked later on 2026-11-04, so this needs no action beyond
+the monitoring suggestion.
+
 **Evidence:** observed on 2026-11-04, repeatedly over one working session.
 
 Every `api-reference` page we tried returned 500, on both URL trees that `llms.txt` lists:
@@ -21,8 +24,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://docs.otari.ai/otari/for-integra
 
 Also failing: `chat`, `organization-traces`, `overview`, `auth`, `tools`, `models`, `traces`.
 
-The index page `otari/for-integrators/api-reference.md` has since started loading, and its error-code table is the best
-single source we've found. The per-endpoint pages we rechecked (`responses`, `chat`, `code-execution`) still return 500.
+The index page `otari/for-integrators/api-reference.md` recovered first, and its error-code table is the best single
+source we've found.
 
 **Impact:** request and response schemas were unavailable when we wrote the first client, so its header names
 came from our project spec and one of them was wrong (see #4).
@@ -53,8 +56,9 @@ and `OTARI_MASTER_KEY` for observability. The docs point elsewhere: the
 and says a header master key "reads no session's content, on any route". `GET /api/v1/traces` is listed for the
 deployment operator.
 
-A valid workspace key, which `GET /models` accepts with a 200, gets the same `401 Invalid master key` here. So the
-message is wrong for this caller as well: their key is valid, and it's simply not a credential this route accepts.
+A valid workspace key, which `GET /models` accepts with a 200, gets the same `401 Invalid master key` here and on
+`GET /usage/summary`. So the message is wrong for this caller as well: their key is valid, and it's simply not a
+credential this route accepts.
 
 **Impact:** an application with API keys has no documented way to read its own traces. We have not tried a master key.
 
@@ -102,7 +106,7 @@ uses non-streaming calls.
 
 **Suggested fix:** publish one response-header reference covering streaming and non-streaming behaviour.
 
-## 5. An unknown model is reported as a missing provider credential
+## 5. An unknown model under a known vendor is reported as a missing provider credential
 
 **Evidence:** observed on 2026-11-04 with a valid workspace key.
 
@@ -114,7 +118,8 @@ curl -s https://otari.ai/api/v1/responses -H "Authorization: Bearer $OTARI_API_K
 ```
 
 The ID isn't in `GET /models`, while listed `openai/*` models on the same key reach the funds check instead. The message
-sends the reader to provider keys when the actual problem is the model name.
+sends the reader to provider keys when the actual problem is the model name. The gateway already has the right answer
+for an unknown vendor: `notavendor/nope` gets `400 invalid_model`, naming the catalog.
 
 **Impact:** a typo in a model ID looks like an account setup problem. Our first role defaults
 (`anthropic:claude-sonnet-5-5` and similar) were not in the catalog at all, and only a catalog check showed that.
@@ -122,11 +127,37 @@ sends the reader to provider keys when the actual problem is the model name.
 **Workaround:** role defaults are now checked against `GET /models`, including `input_modalities` for the role that reads
 images.
 
-**Suggested fix:** answer an ID the catalog doesn't know with a distinct code such as `model_not_found`, and validate
-`vendor/model` IDs before looking for credentials.
+**Suggested fix:** return the existing `400 invalid_model` for any `vendor/model` ID the catalog doesn't know, before
+looking for credentials.
+
+## 6. The workspace web search refusal has no stable code
+
+**Evidence:** observed on 2026-11-04 with a valid workspace key; the promise of a code is documented.
+
+```bash
+curl -s https://otari.ai/api/v1/responses -H "Authorization: Bearer $OTARI_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"openai/gpt-oss-20b","input":"hi","tools":[{"type":"otari_web_search"}]}'
+# 403 {"detail":"web search is not enabled for this workspace"}     (no code, no Otari-Error-Code header)
+```
+
+The [API reference](https://docs.otari.ai/otari/for-integrators/api-reference.md) says a refusal a caller is expected to
+act on carries a stable code. Here a client can't tell this 403 from a guardrail block or a budget refusal without
+matching the text. `GET /tools` does report it clearly, as `"available": false, "reason": "workspace_disabled"`.
+
+**Impact:** our runner treated it as retryable and tried a second model, which can't help. It also isn't obvious from the
+message where to turn the tool on.
+
+**Workaround:** none needed for the run: it falls back to fewer tools, and the telemetry shows why.
+
+**Suggested fix:** send `Otari-Error-Code: tool_disabled` (or similar) and name the workspace setting in the `detail`.
 
 ## Also noted
 
+- **Tool declarations differ:** `otari_web_search` accepts `max_uses`, while `otari_web_fetch` answers
+  `400 declarations may contain only the type field`. The docs do show fetch with `type` alone and the error is clear, so
+  this was our mistake, caught only by a real request.
+- **Guardrails need text:** our real Placentia corrections letter is a scan with no text layer, and the guardrail reads
+  text input. We pass any text layer through, but a scanned letter is not really screened.
 - **Testing without funds:** a new key gets `402 insufficient_funds` on every model call, so guardrails, tools and
   containers can't be tried at all until the organization is funded. The refusal itself is clear and arrives before
   anything is sent upstream.
