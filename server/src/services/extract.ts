@@ -8,8 +8,8 @@ import { supabase, insertMessage } from './supabase.js';
  * Extract a PDF binder into page PNGs + title block crops on Cloud Run,
  * then upload the archives back to Supabase Storage and insert file records.
  *
- * This runs on the Cloud Run server (which has poppler + imagemagick baked
- * into the Docker image), so the Vercel Sandbox never needs system packages.
+ * This runs on the Cloud Run server, which has poppler + imagemagick baked
+ * into the Docker image.
  */
 export async function extractPdfForProject(projectId: string): Promise<void> {
   // 1. Find the PDF binder in the project's file records

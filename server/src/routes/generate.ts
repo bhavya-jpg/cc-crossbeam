@@ -7,7 +7,8 @@ import {
   getPhase1Outputs,
   getProject,
 } from '../services/supabase.js';
-import { runCrossBeamFlow } from '../services/sandbox.js';
+import { contractorKey } from '../otari/contractor-keys.js';
+import { runCrossBeamFlow } from '../otari/runner.js';
 import { extractPdfForProject } from '../services/extract.js';
 import type { InternalFlowType } from '../utils/config.js';
 
@@ -17,6 +18,7 @@ const generateRequestSchema = z.object({
   project_id: z.string().uuid(),
   user_id: z.string().uuid(),
   flow_type: z.enum(['city-review', 'corrections-analysis', 'corrections-response']),
+  simulate_guardrail_block: z.boolean().optional(),
 });
 
 generateRouter.post('/', async (req, res) => {
@@ -28,13 +30,14 @@ generateRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid request', details: parseResult.error });
   }
 
-  const { project_id, user_id, flow_type } = parseResult.data;
+  const { project_id, user_id, flow_type, simulate_guardrail_block } = parseResult.data;
+  const simulateGuardrailBlock = simulate_guardrail_block ?? process.env.OTARI_SIMULATE_GUARDRAIL_BLOCK === 'true';
 
   // Respond immediately - processing continues async
   res.json({ status: 'processing', project_id });
 
   // Start async processing
-  processGeneration(project_id, user_id, flow_type).catch((error) => {
+  processGeneration(project_id, user_id, flow_type, simulateGuardrailBlock).catch((error) => {
     console.error('Generation failed:', error);
   });
 });
@@ -43,6 +46,7 @@ async function processGeneration(
   projectId: string,
   userId: string,
   flowType: InternalFlowType,
+  simulateGuardrailBlock: boolean,
 ) {
   const startTime = Date.now();
 
@@ -64,17 +68,16 @@ async function processGeneration(
     }
 
     // Pre-extract PDF → PNGs on Cloud Run (skips if archives already exist)
-    // This runs pdftoppm + imagemagick locally so the sandbox is pure AI
     if (flowType !== 'corrections-response') {
       try {
         await extractPdfForProject(projectId);
       } catch (extractErr) {
-        console.warn('Pre-extraction failed, sandbox will handle it:', extractErr);
-        // Non-fatal — sandbox can still do extraction as fallback
+        // Non-fatal here: the runner reports it if the flow needs pages it doesn't have.
+        console.warn('Pre-extraction failed:', extractErr);
       }
     }
 
-    // Get files to download into sandbox (re-fetch to include any new archives)
+    // Get the project's files (re-fetch to include any new archives)
     const fileRecords = await getProjectFiles(projectId);
     console.log(`Found ${fileRecords.length} project files`);
 
@@ -100,11 +103,9 @@ async function processGeneration(
     }
 
     // Required env vars
-    const apiKey = process.env.ANTHROPIC_API_KEY;
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
     if (!supabaseUrl || !supabaseKey) throw new Error('Supabase not configured');
 
     // Run the agent
@@ -113,13 +114,14 @@ async function processGeneration(
       flowType,
       city,
       address,
-      apiKey,
       supabaseUrl,
       supabaseKey,
       projectId,
       userId,
       contractorAnswersJson,
       phase1Artifacts,
+      simulateGuardrailBlock,
+      apiKey: contractorKey(),
     });
 
     const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
@@ -130,7 +132,7 @@ async function processGeneration(
       const msg = error instanceof Error ? error.message : 'Unknown error';
       await updateProjectStatus(projectId, 'failed', msg);
     } catch (statusErr) {
-      console.log('Could not update status (sandbox may have already set it)');
+      console.log('Could not update failed status');
     }
   }
 }

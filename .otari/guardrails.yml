@@ -1,0 +1,32 @@
+# Otari Agent Guardrails for coding agents working in this repository.
+# Spec: https://docs.otari.ai/otari/for-integrators/agent-guardrails-reference
+# Enforced only after `otari hook setup` registers the hook on a developer's machine.
+schema_version: "1.0"
+policy:
+  id: crossbeam-safety
+  description: Blocks force-pushes and keeps local secret files out of the agent's reach and out of the tree.
+
+gates:
+  - id: no-force-push
+    type: command
+    runs: [pre_tool_use.command]
+    enforcement: required
+    forbidden: ["git push --force", "git push -f"]
+    message: >-
+      Force-pushing can overwrite the recorded first Otari commit (c71d6ad) that the
+      hackathon submission links to. Push a new commit instead.
+
+  - id: protect-env-files
+    type: path
+    runs: [pre_tool_use.edit_target, pre_tool_use.read_target, stop.working_tree]
+    enforcement: required
+    forbidden:
+      - ".env"
+      - "**/.env"
+      - ".env.local"
+      - "**/.env.local"
+      - ".env.*.local"
+      - "**/.env.*.local"
+    message: >-
+      Local env files hold live API keys. Do not read, edit or commit them. Document new
+      variables in server/.env.example instead.
