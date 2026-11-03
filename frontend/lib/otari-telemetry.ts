@@ -44,6 +44,16 @@ export interface OtariTelemetryEvent {
   keySource: 'contractor' | 'workspace' | 'simulated'
   budgetCapUsd: number
   demoScenario: DemoScenario | null
+  latencyMs: number
+  /** The gateway's real refusal, when recorded output stands in for this call. */
+  replay: OtariRefusal | null
+}
+
+export interface OtariRefusal {
+  requestId: string | null
+  status: number
+  code: string | null
+  latencyMs: number
 }
 
 export function isTelemetryMessage(content: string): boolean {
@@ -74,8 +84,8 @@ export interface RoleSummary {
   status: number
   errorCode: string | null
   calls: number
-  simulated: boolean
   demo: boolean
+  replay: OtariRefusal | null
 }
 
 export type GuardrailTone = 'none' | 'passed' | 'warning' | 'blocked'
@@ -83,7 +93,6 @@ export type GuardrailTone = 'none' | 'passed' | 'warning' | 'blocked'
 export interface GuardrailSummary {
   label: string
   tone: GuardrailTone
-  simulated: boolean
 }
 
 export interface ContainerSummary {
@@ -91,7 +100,6 @@ export interface ContainerSummary {
   expiresAt: string | null
   turns: number
   reused: boolean
-  simulated: boolean
 }
 
 export interface BudgetSummary {
@@ -100,12 +108,20 @@ export interface BudgetSummary {
   spentUsd: number
   capUsd: number
   percent: number
-  state: 'ok' | 'over-cap' | 'hold'
+  /** `no-funds` is a real refusal that recorded output covered, so the run carried on. */
+  state: 'ok' | 'over-cap' | 'hold' | 'no-funds'
   holdStatus: number | null
   holdCode: string | null
   holdScope: string | null
   holdMessage: string | null
-  simulated: boolean
+}
+
+/** Where the numbers on screen came from. The Inspector always says, in one banner. */
+export interface SourceSummary {
+  liveCalls: number
+  replayedCalls: number
+  simulatedCalls: number
+  lastRefusal: OtariRefusal | null
 }
 
 export interface TelemetrySummary {
@@ -113,13 +129,7 @@ export interface TelemetrySummary {
   guardrail: GuardrailSummary
   container: ContainerSummary | null
   budget: BudgetSummary | null
-}
-
-/** A run's events, plus any demos layered over it. Earlier runs stay in the Trace Explorer. */
-function inScope(events: OtariTelemetryEvent[]): OtariTelemetryEvent[] {
-  const runs = events.filter((event) => !event.demoScenario)
-  const latestRun = runs[runs.length - 1]?.conversationId
-  return events.filter((event) => event.demoScenario || event.conversationId === latestRun)
+  source: SourceSummary
 }
 
 function summarizeRole(events: OtariTelemetryEvent[]): RoleSummary | undefined {
@@ -137,24 +147,27 @@ function summarizeRole(events: OtariTelemetryEvent[]): RoleSummary | undefined {
     status: last.status,
     errorCode: last.errorCode,
     calls: sameRun.length,
-    simulated: last.simulated,
     demo: Boolean(last.demoScenario),
+    replay: last.replay,
   }
 }
 
 function summarizeGuardrail(events: OtariTelemetryEvent[]): GuardrailSummary {
   // A call refused for funds never reached the guardrail, so it says nothing about it.
-  const relevant = events.filter((event) => event.blocked || event.guardrailsVerdict)
+  const relevant = events.filter((event) => event.blocked || event.guardrailsVerdict || (event.replay && event.guardrailMode))
   const last = relevant[relevant.length - 1]
-  if (!last) return { label: 'No guardrail result yet', tone: 'none', simulated: false }
+  if (!last) return { label: 'No guardrail result yet', tone: 'none' }
   if (last.blocked) {
-    return { label: `${last.status} Blocked — Prompt Injection Detected`, tone: 'blocked', simulated: last.simulated }
+    return { label: `${last.status} Blocked — Prompt Injection Detected${last.replay ? ' (replay)' : ''}`, tone: 'blocked' }
+  }
+  // The gateway refused before any guardrail ran, so a replayed call has no verdict to show.
+  if (last.replay) {
+    return { label: `${last.guardrailMode}: not evaluated, gateway returned ${last.replay.status}`, tone: 'warning' }
   }
   const verdict = last.guardrailsVerdict as string
   return {
     label: `${last.guardrailMode ?? 'monitor'}: ${verdict}`,
     tone: verdict === 'passed' ? 'passed' : verdict === 'flagged' ? 'blocked' : 'warning',
-    simulated: last.simulated,
   }
 }
 
@@ -163,7 +176,7 @@ function summarizeContainer(events: OtariTelemetryEvent[]): ContainerSummary | n
   const last = withContainer[withContainer.length - 1]
   if (!last?.containerId) return null
   const turns = withContainer.filter((event) => event.containerId === last.containerId).length
-  return { id: last.containerId, expiresAt: last.containerExpiresAt, turns, reused: turns > 1, simulated: last.simulated }
+  return { id: last.containerId, expiresAt: last.containerExpiresAt, turns, reused: turns > 1 }
 }
 
 function summarizeBudget(events: OtariTelemetryEvent[]): BudgetSummary | null {
@@ -172,24 +185,34 @@ function summarizeBudget(events: OtariTelemetryEvent[]): BudgetSummary | null {
   const spentUsd = events
     .filter((event) => event.keyLabel === last.keyLabel)
     .reduce((sum, event) => sum + event.costUsd, 0)
-  const state = last.budgetHold ? 'hold' : spentUsd > last.budgetCapUsd ? 'over-cap' : 'ok'
+  const state = last.budgetHold ? 'hold' : last.replay ? 'no-funds' : spentUsd > last.budgetCapUsd ? 'over-cap' : 'ok'
   return {
     keyLabel: last.keyLabel,
     keySource: last.keySource,
     spentUsd,
     capUsd: last.budgetCapUsd,
-    percent: state === 'ok' ? Math.min(100, (spentUsd / last.budgetCapUsd) * 100) : 100,
+    percent: state === 'hold' || state === 'over-cap' ? 100 : Math.min(100, (spentUsd / last.budgetCapUsd) * 100),
     state,
     holdStatus: last.budgetHold ? last.status : null,
     holdCode: last.budgetHold ? last.errorCode : null,
     holdScope: last.budgetHold ? last.budgetScope : null,
     holdMessage: last.budgetHold ? last.error : null,
-    simulated: last.simulated,
   }
 }
 
-export function summarizeTelemetry(allEvents: OtariTelemetryEvent[]): TelemetrySummary {
-  const events = inScope(allEvents)
+function summarizeSource(events: OtariTelemetryEvent[]): SourceSummary {
+  const replayed = events.filter((event) => event.replay)
+  const simulatedCalls = events.filter((event) => event.simulated).length
+  return {
+    liveCalls: events.length - replayed.length - simulatedCalls,
+    replayedCalls: replayed.length,
+    simulatedCalls,
+    lastRefusal: replayed[replayed.length - 1]?.replay ?? null,
+  }
+}
+
+/** Covers the project's messages, which a reset clears. A contractor flow spans two runs. */
+export function summarizeTelemetry(events: OtariTelemetryEvent[]): TelemetrySummary {
   const roles: TelemetrySummary['roles'] = {}
   for (const { id } of OTARI_ROLES) {
     const summary = summarizeRole(events.filter((event) => event.role === id))
@@ -200,6 +223,7 @@ export function summarizeTelemetry(allEvents: OtariTelemetryEvent[]): TelemetryS
     guardrail: summarizeGuardrail(events),
     container: summarizeContainer(events),
     budget: summarizeBudget(events),
+    source: summarizeSource(events),
   }
 }
 

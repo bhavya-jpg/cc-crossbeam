@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useRealtimeAuth } from '@/lib/supabase/use-realtime-auth'
 import { BrainIcon, WrenchIcon, SettingsIcon, ClockIcon } from 'lucide-react'
+import { LOCAL_MODE, LOCAL_POLL_MS } from '@/lib/local-mode'
 import { isTelemetryMessage } from '@/lib/otari-telemetry'
 import { cn } from '@/lib/utils'
 
@@ -77,9 +78,29 @@ export function AgentStream({ projectId }: AgentStreamProps) {
       })
   }, [projectId, supabase])
 
+  // Local mode has no Realtime, so it polls for new messages.
+  useEffect(() => {
+    if (!LOCAL_MODE) return
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .schema('crossbeam')
+        .from('messages')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('id', { ascending: true })
+      if (!data) return
+      setMessages(prev => {
+        if (data.length === prev.length) return prev
+        lastMessageTimeRef.current = Date.now()
+        return data as Message[]
+      })
+    }, LOCAL_POLL_MS)
+    return () => clearInterval(interval)
+  }, [projectId, supabase])
+
   // Realtime: new messages (replaces polling)
   useEffect(() => {
-    if (!realtimeReady) return
+    if (!realtimeReady || LOCAL_MODE) return
 
     const channel = supabase
       .channel(`messages-${projectId}`)

@@ -8,10 +8,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { AduMiniature } from '@/components/adu-miniature'
 import { Loader2Icon, LogInIcon } from 'lucide-react'
+import { LOCAL_MODE } from '@/lib/local-mode'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(LOCAL_MODE ? 'judge@crossbeam.local' : '')
+  const [password, setPassword] = useState(LOCAL_MODE ? 'crossbeam-local' : '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()

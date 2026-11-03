@@ -27,7 +27,7 @@ const SIM_CONTAINER_ID = 'ctr_otari_9f8a7b';
 const SIM_DEFAULT_MODEL = 'openai/gpt-oss-120b';
 const SIM_ADDRESS = 'SIMULATED, 123 Example St';
 
-function file(name: string, content: unknown): string {
+export function fileBlock(name: string, content: unknown): string {
   const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
   return `<file name="${name}">\n${text}\n</file>`;
 }
@@ -40,7 +40,7 @@ const SIM_ITEMS = [
 function stageText(stage: SimStage | undefined): string {
   switch (stage) {
     case 'extract-corrections':
-      return file('corrections_parsed.json', {
+      return fileBlock('corrections_parsed.json', {
         simulated: true,
         project: { address: SIM_ADDRESS, city: 'Simulated', state: 'CA', permit_number: 'SIM-0001', project_type: 'Simulated detached ADU', review_round: 'Simulated', reviewer: 'Simulated', date: '2026-01-01' },
         items: SIM_ITEMS,
@@ -49,20 +49,20 @@ function stageText(stage: SimStage | undefined): string {
         code_references_summary: ['Gov. Code § 66314(d)(7)', 'CPC Table 702.1'],
       });
     case 'extract-sheets':
-      return file('sheet_observations.json', {
+      return fileBlock('sheet_observations.json', {
         simulated: true,
         sheets: [{ page: 1, sheet_id: 'SIM-1', sheet_title: 'Simulated sheet', discipline: 'Simulated', observations: ['Simulated: no plan sheet was read.'], measurements: { lot_area_sqft: 6000, adu_area_sqft: 700, side_setback_ft: 4, rear_setback_ft: 4 } }],
       });
     case 'research':
-      return file('city_research_findings.json', { simulated: true, sources: [], findings: [{ topic: 'Simulated', rule: 'Simulated: no web research was performed.', citation: null }] });
+      return fileBlock('city_research_findings.json', { simulated: true, sources: [], findings: [{ topic: 'Simulated', rule: 'Simulated: no web research was performed.', citation: null }] });
     case 'spatial-compute':
     case 'spatial-verify':
-      return file('spatial_analysis.json', { simulated: true, checks: [{ check: 'side_setback', measured: 4, limit: 4, unit: 'ft', result: 'simulated' }], code_executed: true });
+      return fileBlock('spatial_analysis.json', { simulated: true, checks: [{ check: 'side_setback', measured: 4, limit: 4, unit: 'ft', result: 'simulated' }], code_executed: true });
     case 'draft-analysis':
       return [
-        file('state_law_findings.json', { simulated: true, findings: [] }),
-        file('corrections_categorized.json', { simulated: true, items: SIM_ITEMS.map((item) => ({ ...item, category: 'NEEDS_CONTRACTOR_INPUT' })) }),
-        file('contractor_questions.json', {
+        fileBlock('state_law_findings.json', { simulated: true, findings: [] }),
+        fileBlock('corrections_categorized.json', { simulated: true, items: SIM_ITEMS.map((item) => ({ ...item, category: 'NEEDS_CONTRACTOR_INPUT' })) }),
+        fileBlock('contractor_questions.json', {
           simulated: true,
           summary: { total_items: 2, auto_fixable: 0, needs_contractor_input: 2, needs_professional: 0 },
           question_groups: [{
@@ -79,16 +79,16 @@ function stageText(stage: SimStage | undefined): string {
       ].join('\n');
     case 'draft-review':
       return [
-        file('draft_corrections.md', `${SIMULATED_BANNER}# Draft Corrections Letter\n\n1. Simulated correction item. [REVIEWER: simulated]`),
-        file('draft_corrections.json', { simulated: true, items: [] }),
-        file('review_summary.json', { simulated: true, total_items: 1 }),
+        fileBlock('draft_corrections.md', `${SIMULATED_BANNER}# Draft Corrections Letter\n\n1. Simulated correction item. [REVIEWER: simulated]`),
+        fileBlock('draft_corrections.json', { simulated: true, items: [] }),
+        fileBlock('review_summary.json', { simulated: true, total_items: 1 }),
       ].join('\n');
     case 'draft-response':
       return [
-        file('response_letter.md', `${SIMULATED_BANNER}# Response to Plan Check Comments\n\nSimulated response letter.`),
-        file('professional_scope.md', `${SIMULATED_BANNER}# Professional Scope of Work\n\nSimulated scope.`),
-        file('corrections_report.md', `${SIMULATED_BANNER}# Corrections Analysis Report\n\nSimulated report.`),
-        file('sheet_annotations.json', { simulated: true, sheets: [] }),
+        fileBlock('response_letter.md', `${SIMULATED_BANNER}# Response to Plan Check Comments\n\nSimulated response letter.`),
+        fileBlock('professional_scope.md', `${SIMULATED_BANNER}# Professional Scope of Work\n\nSimulated scope.`),
+        fileBlock('corrections_report.md', `${SIMULATED_BANNER}# Corrections Analysis Report\n\nSimulated report.`),
+        fileBlock('sheet_annotations.json', { simulated: true, sheets: [] }),
       ].join('\n');
     default:
       return 'Simulated response.';
@@ -101,6 +101,8 @@ interface SimRequest {
   body?: unknown;
   stage?: SimStage;
   scenario?: SimScenario;
+  /** Hybrid replay: answer with this recorded text, no tool activity and no cost. */
+  recordedText?: string;
 }
 
 type SimBody = {
@@ -161,7 +163,8 @@ export function simulateOtariResponse(request: SimRequest): Response {
     headers['Otari-Container-Expires-At'] = new Date(Date.now() + 600_000).toISOString();
   }
 
-  const text = stageText(request.stage);
+  const recorded = request.recordedText !== undefined;
+  const text = request.recordedText ?? stageText(request.stage);
   const input = 1200;
   const output = 400;
 
@@ -170,19 +173,22 @@ export function simulateOtariResponse(request: SimRequest): Response {
       id: `chatcmpl-sim-${randomUUID()}`,
       model,
       choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: text } }],
-      usage: { prompt_tokens: input, completion_tokens: output, total_tokens: input + output, cost_usd: '0.012000', pricing_source: 'simulated' },
+      usage: { prompt_tokens: input, completion_tokens: output, total_tokens: input + output, cost_usd: recorded ? '0.000000' : '0.012000', pricing_source: recorded ? 'replay' : 'simulated' },
     }), { status: 200, headers });
   }
 
   const inputItems = Array.isArray(body.input) ? (body.input as Array<{ type?: string }>) : [];
   const offersLookup = body.tools?.some((t) => t.type === 'function');
   const answeredLookup = inputItems.some((item) => item.type === 'function_call_output');
-  const output_items: unknown[] = offersLookup && !answeredLookup
+  const message = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text, annotations: [] }] };
+  const output_items: unknown[] = recorded
+    ? [message]
+    : offersLookup && !answeredLookup
     ? [{ type: 'function_call', call_id: 'call_sim_1', name: 'search_references', arguments: JSON.stringify({ query: 'side setback' }) }]
     : [
         ...(body.tools ?? []).filter((t) => t.type !== 'function').map((t) => ({ type: `${t.type}_call`, status: 'completed' })),
         ...(body.mcp_servers ?? []).map((s) => ({ type: 'mcp_call', server_label: s.name, name: 'search_references', status: 'completed' })),
-        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text, annotations: [] }] },
+        message,
       ];
 
   return new Response(JSON.stringify({
@@ -192,7 +198,9 @@ export function simulateOtariResponse(request: SimRequest): Response {
     model,
     output: output_items,
     // No cost on the researcher role, so the per-1k estimate path runs too.
-    usage: request.stage === 'research'
+    usage: recorded
+      ? { input_tokens: 0, output_tokens: 0, total_tokens: 0, cost_usd: '0.000000', pricing_source: 'replay' }
+      : request.stage === 'research'
       ? { input_tokens: input, output_tokens: output, total_tokens: input + output }
       : { input_tokens: input, output_tokens: output, total_tokens: input + output, cost_usd: '0.012000', pricing_source: 'simulated' },
   }), { status: 200, headers });

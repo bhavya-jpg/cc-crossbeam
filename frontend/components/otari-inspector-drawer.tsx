@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { LOCAL_MODE, LOCAL_POLL_MS } from '@/lib/local-mode'
 import { createClient } from '@/lib/supabase/client'
 import { useRealtimeAuth } from '@/lib/supabase/use-realtime-auth'
 import {
@@ -26,7 +27,9 @@ import {
   summarizeTelemetry,
   type DemoScenario,
   type OtariTelemetryEvent,
+  type OtariRefusal,
   type RoleSummary,
+  type SourceSummary,
   type TelemetrySummary,
 } from '@/lib/otari-telemetry'
 import { cn } from '@/lib/utils'
@@ -45,6 +48,7 @@ interface DemoResult {
   status: number | null
   code: string | null
   message: string
+  replay: OtariRefusal | null
 }
 
 export interface ActiveDemo {
@@ -76,12 +80,25 @@ const OUTCOME_TITLE: Record<DemoResult['outcome'], string> = {
 
 // --- Small shared pieces ---
 
-function SimulatedTag({ show }: { show: boolean }) {
-  if (!show) return null
+function SourceBanner({ source }: { source: SourceSummary }) {
+  const { replayedCalls, simulatedCalls, lastRefusal } = source
+  if (!replayedCalls && !simulatedCalls) return null
+  const requestId = lastRefusal?.requestId?.slice(0, 8)
   return (
-    <Badge variant="outline" className="rounded-full border-dashed font-body text-[10px] text-muted-foreground">
-      SIMULATED
-    </Badge>
+    <div className="space-y-0.5 rounded-xl border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground font-body">
+      {replayedCalls > 0 && lastRefusal && (
+        <p>
+          <span className="font-semibold text-foreground">Replay mode.</span>{' '}
+          Otari returned {lastRefusal.status} {lastRefusal.code} (request {requestId}, {lastRefusal.latencyMs} ms) on {replayedCalls} {replayedCalls === 1 ? 'call' : 'calls'}, so recorded Placentia output is shown and no model ran. It goes live on its own once the account has funds.
+        </p>
+      )}
+      {simulatedCalls > 0 && (
+        <p>
+          <span className="font-semibold text-foreground">Simulated.</span>{' '}
+          {simulatedCalls} {simulatedCalls === 1 ? 'call' : 'calls'} never reached the gateway.
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -106,6 +123,7 @@ const usd = (value: number) => `$${value.toFixed(value > 0 && value < 0.01 ? 4 :
 // --- Control plane panels ---
 
 function attemptLabel(role: RoleSummary): string {
+  if (role.replay) return `Client attempt ${role.clientAttempts} · not served by a model`
   const gateway = role.gatewayAttempts ?? '—'
   return role.clientAttempts > (role.gatewayAttempts ?? 0)
     ? `Client attempt ${role.clientAttempts} · Otari-Attempt-Count: ${gateway}`
@@ -125,7 +143,6 @@ function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
               {!role && <span className="text-xs text-muted-foreground font-body">{job}</span>}
               <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
                 {role?.demo && <Badge variant="outline" className="rounded-full font-body text-[10px] text-muted-foreground">DEMO</Badge>}
-                {role && <SimulatedTag show={role.simulated} />}
                 {role?.failover && (
                   <Badge className="rounded-full border-amber-300 bg-amber-100 font-body text-[10px] font-bold text-amber-900">
                     FAILOVER TRIGGERED
@@ -139,9 +156,15 @@ function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
                   <Badge variant="outline" className="max-w-full rounded-full font-mono text-[11px]">
                     <span className="truncate">{role.model ?? 'unknown model'}</span>
                   </Badge>
-                  <Badge className="rounded-full bg-muted font-body text-[11px] text-foreground">
-                    {role.provider ?? 'no provider reported'}
-                  </Badge>
+                  {role.replay ? (
+                    <Badge className="rounded-full bg-muted font-body text-[11px] text-foreground">
+                      Replay · gateway {role.replay.status}
+                    </Badge>
+                  ) : (
+                    <Badge className="rounded-full bg-muted font-body text-[11px] text-foreground">
+                      {role.provider ?? 'no provider reported'}
+                    </Badge>
+                  )}
                   {refused && (
                     <Badge variant="destructive" className="rounded-full font-body text-[11px]">
                       {role.status}{role.errorCode ? ` ${role.errorCode}` : ''}
@@ -178,13 +201,12 @@ function GuardrailShield({ guardrail }: { guardrail: TelemetrySummary['guardrail
     >
       <Icon className="size-5 shrink-0" aria-hidden />
       <span className="text-sm font-semibold font-body">{guardrail.label}</span>
-      <span className="ml-auto"><SimulatedTag show={guardrail.simulated} /></span>
     </div>
   )
 }
 
 function ContainerPill({ container }: { container: TelemetrySummary['container'] }) {
-  if (!container) return <Empty>No code container yet. The analyst role opens one.</Empty>
+  if (!container) return <Empty>No code container has run yet. The analyst role opens one on a live model call.</Empty>
   return (
     <div className="space-y-1.5 rounded-xl border border-border/50 p-3">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -194,7 +216,6 @@ function ContainerPill({ container }: { container: TelemetrySummary['container']
         <Badge className={cn('rounded-full font-body text-[11px]', !container.reused && 'bg-muted text-foreground')}>
           {container.reused ? `Reused across ${container.turns} turns` : 'Used on 1 turn'}
         </Badge>
-        <SimulatedTag show={container.simulated} />
       </div>
       <p className="text-xs text-muted-foreground font-body">
         {container.expiresAt ? `Expires ${new Date(container.expiresAt).toLocaleTimeString()}` : 'The gateway reported no expiry'}
@@ -212,16 +233,15 @@ function BudgetBar({ budget }: { budget: TelemetrySummary['budget'] }) {
         <Badge variant="outline" className="max-w-full rounded-full font-mono text-[11px]">
           <span className="truncate">{budget.keyLabel}</span>
         </Badge>
-        <SimulatedTag show={budget.simulated} />
         <Badge
           variant={budget.state === 'hold' ? 'destructive' : 'default'}
           className={cn(
             'ml-auto rounded-full font-body text-[11px]',
             budget.state === 'ok' && 'bg-primary/10 text-primary',
-            budget.state === 'over-cap' && 'border-amber-300 bg-amber-100 text-amber-900',
+            (budget.state === 'over-cap' || budget.state === 'no-funds') && 'border-amber-300 bg-amber-100 text-amber-900',
           )}
         >
-          {budget.state === 'hold' ? 'HOLD' : budget.state === 'over-cap' ? 'Over display cap' : 'No hold'}
+          {budget.state === 'hold' ? 'HOLD' : budget.state === 'over-cap' ? 'Over display cap' : budget.state === 'no-funds' ? 'No funds' : 'No hold'}
         </Badge>
       </div>
       <div
@@ -238,7 +258,7 @@ function BudgetBar({ budget }: { budget: TelemetrySummary['budget'] }) {
         />
       </div>
       <p className="text-xs text-muted-foreground font-body">
-        <span className="font-semibold text-foreground">{usd(budget.spentUsd)}</span> agent_cost_usd of {usd(budget.capUsd)} cap this run
+        <span className="font-semibold text-foreground">{usd(budget.spentUsd)}</span> agent_cost_usd of {usd(budget.capUsd)} cap on this project
       </p>
       {budget.state === 'hold' && (
         <p className="text-xs text-destructive font-body">
@@ -325,7 +345,10 @@ function TraceExplorer({ conversations }: { conversations: string[] }) {
                   <div className="flex items-center gap-2 text-sm font-body">
                     <span className="font-semibold capitalize text-foreground">{span.role}</span>
                     <span className="font-mono text-xs text-muted-foreground">{span.status}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{usd(span.costUsd ?? 0)}</span>
+                    {span.replay && <span className="text-xs text-muted-foreground">replay of {span.replay.status}</span>}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {span.latencyMs ? `${span.latencyMs} ms · ` : ''}{usd(span.costUsd ?? 0)}
+                    </span>
                   </div>
                   <p className="truncate font-mono text-[11px] text-muted-foreground">{span.model ?? 'unknown model'}</p>
                   <p className="truncate font-mono text-[11px] text-muted-foreground">{span.requestId ?? 'no request ID'}</p>
@@ -358,7 +381,7 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
   return (
     <aside
       aria-label="Otari.ai Control Plane"
-      className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-border/50 bg-card shadow-[0_8px_32px_rgba(28,25,23,0.16)] sm:w-[440px]"
+      className="fixed inset-y-0 right-0 z-[60] flex w-full flex-col border-l border-border/50 bg-card shadow-[0_8px_32px_rgba(28,25,23,0.16)] sm:w-[440px]"
     >
       <header className="space-y-3 border-b border-border/50 p-4">
         <div className="flex items-center gap-2">
@@ -416,6 +439,7 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto p-4" aria-live="polite">
+        <SourceBanner source={summary.source} />
         {DEMO_TOGGLES.map(({ scenario }) => {
           const demo = demos[scenario]
           if (!demo || demo.running) return null
@@ -438,12 +462,11 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
                 <p className="break-words text-xs text-foreground font-body">{result?.message ?? demo.error}</p>
                 {result && (
                   <div className="flex flex-wrap gap-1.5">
-                    {result.status !== null && (
+                    {result.status !== null && !result.replay && (
                       <Badge variant="outline" className="rounded-full font-mono text-[10px]">
                         {result.status}{result.code ? ` ${result.code}` : ''}
                       </Badge>
                     )}
-                    <SimulatedTag show={result.simulated} />
                   </div>
                 )}
               </div>
@@ -495,8 +518,15 @@ export function OtariInspectorDrawer({ projectId, defaultOpen = false }: OtariIn
     refresh()
   }, [refresh])
 
+  // Local mode has no Realtime, so it polls.
   useEffect(() => {
-    if (!realtimeReady) return
+    if (!LOCAL_MODE) return
+    const interval = setInterval(refresh, LOCAL_POLL_MS)
+    return () => clearInterval(interval)
+  }, [refresh])
+
+  useEffect(() => {
+    if (!realtimeReady || LOCAL_MODE) return
     const channel = supabase
       .channel(`otari-telemetry-${projectId}`)
       .on(
@@ -515,6 +545,12 @@ export function OtariInspectorDrawer({ projectId, defaultOpen = false }: OtariIn
   }, [projectId, supabase, realtimeReady])
 
   const events = useMemo(() => parseTelemetry(messages), [messages])
+
+  // On wide screens the page makes room, so the drawer never covers the live activity feed.
+  useEffect(() => {
+    document.body.classList.toggle('otari-drawer-open', open)
+    return () => document.body.classList.remove('otari-drawer-open')
+  }, [open])
 
   const toggleDemo = useCallback(async (scenario: DemoScenario) => {
     if (demos[scenario]) {

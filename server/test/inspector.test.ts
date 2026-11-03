@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import express from 'express';
 
 process.env.SUPABASE_URL ??= 'http://localhost:54321';
@@ -9,6 +13,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'test-key';
 const { OtariClient } = await import('../src/otari/client.js');
 const { runDemoScenario } = await import('../src/otari/demo.js');
 const { createOtariRouter } = await import('../src/routes/otari.js');
+const { createCompatApp } = await import('../src/local/supabase-compat.js');
 const { runCrossBeamFlow } = await import('../src/otari/runner.js');
 const { listConversations, parseTelemetry, summarizeTelemetry } = await import('../../frontend/lib/otari-telemetry.js');
 
@@ -16,7 +21,7 @@ const ENV_KEYS = [
   'OTARI_API_KEY', 'OTARI_MASTER_KEY', 'OTARI_DEMO_SIMULATION', 'OTARI_CONTRACTOR_KEY', 'OTARI_CONTRACTOR_KEY_LABEL',
   'OTARI_CONTRACTOR_BUDGET_USD', 'OTARI_EXHAUSTED_CONTRACTOR_KEY', 'OTARI_EXHAUSTED_CONTRACTOR_KEY_LABEL',
   'OTARI_INSPECTOR_TOKEN', 'OTARI_DEMO_CONTROLS', 'OTARI_DEMO_MODEL', 'OTARI_DEMO_UNAVAILABLE_MODEL',
-  'OTARI_MCP_PUBLIC_URL', 'NODE_ENV',
+  'OTARI_MCP_PUBLIC_URL', 'OTARI_HYBRID_FALLBACK', 'NODE_ENV',
 ];
 let savedEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
@@ -165,9 +170,9 @@ describe('demo scenarios, simulated', () => {
     assert.equal(result.outcome, 'held');
     assert.equal(result.simulated, true);
     assert.equal(result.code, 'budget_exceeded');
-    const budget = summarizeTelemetry(eventsOf(store)).budget;
+    const { budget, source } = summarizeTelemetry(eventsOf(store));
     assert.equal(budget?.state, 'hold');
-    assert.equal(budget?.simulated, true);
+    assert.equal(source.simulatedCalls, 1);
     assert.equal(budget?.keyLabel, 'vk_contractor_exhausted_00');
   });
 });
@@ -238,6 +243,206 @@ describe('demo scenarios against a live gateway', () => {
     const all = JSON.stringify(store.messages);
     for (const secret of ['contractor-secret', 'spent-secret', 'workspace-secret']) assert.ok(!all.includes(secret), secret);
     assert.ok(eventsOf(store).every((e) => e.keySource === 'contractor'));
+  });
+});
+
+describe('hybrid fallback', () => {
+  const flow = {
+    files: [{ filename: 'corrections.png', storage_path: 'x', file_type: 'corrections-letter' }, { filename: 'page-01.png', storage_path: 'y', file_type: 'plan-binder' }],
+    flowType: 'corrections-analysis' as const, city: 'Placentia', projectId: PROJECT, userId: USER,
+  };
+
+  it('calls the gateway first, then runs the whole flow on recorded output, and says so', async () => {
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    const { client, calls } = scriptedClient([NO_FUNDS]);
+    const store = fakeStore();
+    await runCrossBeamFlow(flow, { client, store: store as never });
+
+    assert.equal(calls[0].auth, 'Bearer workspace-secret');
+    const events = eventsOf(store);
+    assert.equal(calls.length, events.length, 'every call reached the gateway');
+    assert.ok(events.every((e) => e.replay?.requestId === 'req-402' && e.replay.status === 402 && e.requestId === 'req-402'));
+    assert.ok(events.every((e) => e.simulated === false && e.costUsd === 0 && e.provider === null && e.containerId === null));
+    assert.deepEqual(store.statuses, ['awaiting-answers']);
+    assert.equal(store.messages.filter((m) => m.content.startsWith('[OTARI_REPLAY]')).length, 1);
+
+    // Nothing claims a verdict, a sandbox or spend that never happened.
+    const summary = summarizeTelemetry(events);
+    assert.equal(summary.guardrail.label, 'monitor: not evaluated, gateway returned 402');
+    assert.equal(summary.container, null);
+    assert.equal(summary.budget?.state, 'no-funds');
+    assert.equal(summary.source.replayedCalls, events.length);
+    assert.equal(summary.source.liveCalls, 0);
+
+    // The output is the recorded Placentia run, and is marked as such.
+    const output = store.outputs[0] as { agent_cost_usd: number; raw_artifacts: Record<string, any> };
+    assert.equal(output.agent_cost_usd, 0);
+    assert.match(JSON.stringify(output.raw_artifacts['corrections_parsed.json'].project), /Jefferson/);
+    assert.equal(output.raw_artifacts['corrections_parsed.json'].recorded_sample, true);
+    assert.equal(output.raw_artifacts['spatial_analysis.json'].execution.code_executed, false);
+    assert.equal(output.raw_artifacts['replay.json'].replayed_calls, events.length);
+  });
+
+  it('labels replayed deliverables so they cannot pass as model output', async () => {
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    const { client } = scriptedClient([NO_FUNDS]);
+    const store = fakeStore();
+    await runCrossBeamFlow({ ...flow, flowType: 'corrections-response', phase1Artifacts: { 'corrections_parsed.json': {} } }, { client, store: store as never });
+    const output = store.outputs[0] as Record<string, string>;
+    for (const column of ['response_letter_md', 'professional_scope_md', 'corrections_report_md']) {
+      assert.ok(output[column].startsWith('> **RECORDED SAMPLE.**'), column);
+    }
+  });
+
+  it('goes live with no change once the gateway serves the call', async () => {
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    const { client } = scriptedClient([CHAT_OK]);
+    const result = await client.chatCompletions({ model: 'm', messages: [] }, { runId: 'r' });
+    assert.equal(result.replay, null);
+    assert.equal(result.headers.provider, 'groq');
+    assert.equal(result.data.choices[0].message.content, 'OK');
+  });
+
+  it('only covers insufficient_funds: other refusals stay errors', async () => {
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    for (const reply of [
+      { status: 402, body: { detail: 'no price', code: 'pricing_required' }, headers: { 'Otari-Error-Code': 'pricing_required' } },
+      { status: 403, body: { detail: 'over', code: 'budget_exceeded' }, headers: { 'Otari-Error-Code': 'budget_exceeded' } },
+      { status: 401, body: { detail: 'Invalid API key' } },
+    ]) {
+      const { client } = scriptedClient([reply]);
+      await assert.rejects(client.responses({ model: 'm', input: 'x' }, { runId: 'r' }), { status: reply.status });
+    }
+  });
+
+  it('is off in production and off by default', async () => {
+    const off = scriptedClient([NO_FUNDS]);
+    await assert.rejects(off.client.responses({ model: 'm', input: 'x' }, { runId: 'r' }), { status: 402 });
+
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    process.env.NODE_ENV = 'production';
+    const production = scriptedClient([NO_FUNDS]);
+    await assert.rejects(production.client.responses({ model: 'm', input: 'x' }, { runId: 'r' }), { status: 402 });
+  });
+
+  it('Toggle 3 shows the genuine refusal, never a replay', async () => {
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    process.env.OTARI_EXHAUSTED_CONTRACTOR_KEY = 'zero-balance-secret';
+    const { client, calls } = scriptedClient([NO_FUNDS]);
+    const store = fakeStore();
+    const result = await runDemoScenario('exhausted-key', PROJECT, { client, store });
+
+    assert.equal(calls[0].auth, 'Bearer zero-balance-secret');
+    assert.deepEqual([result.outcome, result.status, result.code, result.simulated, result.replay], ['held', 402, 'insufficient_funds', false, null]);
+    const { budget, source } = summarizeTelemetry(eventsOf(store));
+    assert.equal(budget?.state, 'hold');
+    assert.equal(source.liveCalls, 1);
+    assert.ok(!JSON.stringify(store.messages).includes('zero-balance-secret'));
+  });
+
+  it('Toggles 1 and 2 disclose the replay and keep real failures real', async () => {
+    process.env.OTARI_HYBRID_FALLBACK = 'true';
+    const block = scriptedClient([NO_FUNDS]);
+    const blockStore = fakeStore();
+    const blocked = await runDemoScenario('guardrail-block', PROJECT, { client: block.client, store: blockStore });
+    assert.equal(blocked.outcome, 'blocked');
+    assert.equal(blocked.replay?.requestId, 'req-402');
+    assert.match(blocked.message, /^Replay:/);
+    assert.equal(summarizeTelemetry(eventsOf(blockStore)).guardrail.label, '403 Blocked — Prompt Injection Detected (replay)');
+
+    const failover = scriptedClient([{ status: 424, body: { detail: 'no credential', code: 'provider_not_configured' } }, NO_FUNDS]);
+    const failoverStore = fakeStore();
+    const moved = await runDemoScenario('provider-failover', PROJECT, { client: failover.client, store: failoverStore });
+    assert.equal(moved.outcome, 'failed-over');
+    assert.match(moved.message, /really failed.*replay/);
+    const events = eventsOf(failoverStore);
+    assert.deepEqual(events.map((e) => [e.status, e.replay?.status ?? null]), [[424, null], [200, 402]]);
+    const role = summarizeTelemetry(events).roles.researcher;
+    assert.equal(role?.failover, true);
+    assert.equal(role?.gatewayFallback, false, 'a client retry is never reported as Otari-Fallback');
+  });
+});
+
+describe('local Supabase stand-in, through the real supabase-js client', () => {
+  let dir: string;
+  let server: ReturnType<express.Express['listen']>;
+  let flush: () => void;
+  let db: SupabaseClient<any, any, any>;
+  const CONTRACTOR = 'b0000000-0000-0000-0000-000000000002';
+
+  beforeEach(async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-local-'));
+    // A dot-directory, like the real server/.local-data.
+    const compat = createCompatApp(path.join(dir, '.local-data'));
+    flush = compat.flush;
+    server = compat.app.listen(0, '127.0.0.1');
+    await new Promise((resolve) => server.once('listening', resolve));
+    db = createClient(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, 'local', { auth: { persistSession: false, autoRefreshToken: false } });
+  });
+  afterEach(() => {
+    server.close();
+    flush();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const table = (name: string) => db.schema('crossbeam').from(name);
+
+  it('seeds the judge projects with the binder first, as extract.ts expects', async () => {
+    const { data: project } = await table('projects').select('status, city, is_demo').eq('id', CONTRACTOR).single();
+    assert.deepEqual(project, { status: 'ready', city: 'Placentia', is_demo: true });
+    const { data: files } = await table('files').select('*').eq('project_id', CONTRACTOR);
+    assert.equal(files?.[0].filename, 'Binder-1232-N-Jefferson.pdf');
+  });
+
+  it('supports the query shapes the app sends', async () => {
+    for (const content of ['[OTARI_TELEMETRY] {}', 'plain', '[OTARI_TELEMETRY] {"a":1}']) {
+      await table('messages').insert({ project_id: CONTRACTOR, role: 'system', content });
+    }
+    const { data } = await table('messages').select('id, content').eq('project_id', CONTRACTOR).like('content', '[OTARI_TELEMETRY]%').order('id', { ascending: false });
+    assert.equal(data?.length, 2);
+    assert.ok(data![0].id > data![1].id);
+
+    const { data: inserted } = await table('outputs').insert({ project_id: CONTRACTOR, flow_phase: 'analysis', version: 1 }).select('id').single();
+    assert.ok(inserted?.id);
+    const { data: latest } = await table('outputs').select('version').eq('project_id', CONTRACTOR).eq('flow_phase', 'analysis').order('version', { ascending: false }).limit(1);
+    assert.deepEqual(latest, [{ version: 1 }]);
+
+    await table('projects').update({ status: 'completed' }).eq('id', CONTRACTOR);
+    assert.equal((await table('projects').select('status').eq('id', CONTRACTOR).single()).data?.status, 'completed');
+
+    await table('messages').delete().eq('project_id', CONTRACTOR);
+    assert.equal((await table('messages').select('*').eq('project_id', CONTRACTOR)).data?.length, 0);
+
+    const missing = await table('projects').select('*').eq('id', 'nope').single();
+    assert.equal(missing.error?.code, 'PGRST116');
+  });
+
+  it('enforces the constraints the app relies on', async () => {
+    const { error } = await table('contractor_answers').insert({ project_id: CONTRACTOR, question_key: 'q', question_text: 't', question_type: 'select' });
+    assert.equal(error?.code, '23514');
+  });
+
+  it('signs in the demo user and rejects anything else', async () => {
+    const bad = await db.auth.signInWithPassword({ email: 'judge@crossbeam.local', password: 'wrong' });
+    assert.ok(bad.error);
+    const good = await db.auth.signInWithPassword({ email: 'judge@crossbeam.local', password: 'crossbeam-local' });
+    assert.equal(good.error, null);
+    const { data } = await db.auth.getUser(good.data.session!.access_token);
+    assert.equal(data.user?.email, 'judge@crossbeam.local');
+  });
+
+  it('serves demo assets and stored uploads, and stays inside its folders', async () => {
+    const { data: pdf } = await db.storage.from('crossbeam-demo-assets').download('corrections/2nd-Review-Corrections-1232-Jefferson-St-Placentia.pdf');
+    assert.equal(Buffer.from(await pdf!.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+
+    const { error } = await db.storage.from('crossbeam-uploads').upload('a/b.bin', Buffer.from('hello'), { upsert: true });
+    assert.equal(error, null);
+    const { data: stored } = await db.storage.from('crossbeam-uploads').download('a/b.bin');
+    assert.equal(await stored!.text(), 'hello');
+
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/storage/v1/object`;
+    for (const attempt of ['crossbeam-demo-assets/%2e%2e%2f%2e%2e%2fserver%2f.env', 'crossbeam-uploads/%2e%2e%2f%2e%2e%2fdb.json']) {
+      assert.equal((await fetch(`${base}/${attempt}`)).status, 404, attempt);
+    }
   });
 });
 

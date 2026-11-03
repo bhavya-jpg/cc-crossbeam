@@ -451,7 +451,7 @@ describe('runCrossBeamFlow: corrections-analysis', () => {
     const [research] = byStage('research');
     assert.equal(research.endpoint, 'responses');
     assert.equal(research.body.model, 'openai/gpt-oss-120b');
-    assert.deepEqual(research.body.tools, [{ type: 'otari_web_search', max_uses: 5 }, { type: 'otari_web_fetch', max_uses: 5 }]);
+    assert.deepEqual(research.body.tools, [{ type: 'otari_web_search', max_uses: 5 }, { type: 'otari_web_fetch' }]);
     assert.equal(research.body.mcp_servers, undefined);
 
     const draft = byStage('draft-analysis');

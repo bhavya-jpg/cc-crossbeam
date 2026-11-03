@@ -14,6 +14,7 @@ import {
   OtariClient,
   OtariError,
   type ChatCompletionResponse,
+  type OtariReplay,
   type ResponsesResponse,
 } from './client.js';
 import { contractorKey } from './contractor-keys.js';
@@ -33,13 +34,19 @@ export interface DemoResult {
   status: number | null;
   code: string | null;
   message: string;
+  /** Set when the gateway refused for lack of funds and this result is a replay. */
+  replay: OtariReplay | null;
 }
+
+type DemoOutput = Omit<DemoResult, 'scenario' | 'conversationId' | 'simulated'>;
+const REPLAY_NOTE = 'Replay: the gateway refused this call before it could run, so this shows how the result is displayed.';
 
 const DEMO_MAX_TOKENS = 16;
 const demoModel = () => process.env.OTARI_DEMO_MODEL || OTARI_MODELS.researcher[1];
 
-function refusal(error: unknown): Pick<DemoResult, 'status' | 'code' | 'message'> {
+function refusal(error: unknown): Pick<DemoResult, 'status' | 'code' | 'message' | 'replay'> {
   return {
+    replay: error instanceof OtariError ? error.replay : null,
     status: error instanceof OtariError ? error.status : null,
     code: error instanceof OtariError ? error.code : null,
     message: error instanceof Error ? error.message : String(error),
@@ -62,6 +69,7 @@ function demoContext(
     turns: 0,
     costUsd: 0,
     demoScenario: scenario,
+    replayedCalls: 0,
   };
 }
 
@@ -78,29 +86,33 @@ function miniChat(ctx: RunContext, role: 'extractor' | 'drafter', content: strin
       signal,
       simStage: 'extract-corrections',
       simScenario: ctx.demoScenario === 'exhausted-key' ? 'budget-exceeded' : undefined,
+      // This demo exists to show the refusal itself, so it's never replaced.
+      allowReplay: ctx.demoScenario !== 'exhausted-key',
     }),
   );
 }
 
-async function guardrailBlock(ctx: RunContext): Promise<Omit<DemoResult, 'scenario' | 'conversationId' | 'simulated'>> {
+async function guardrailBlock(ctx: RunContext): Promise<DemoOutput> {
   try {
     const { result } = await miniChat(ctx, 'extractor', `Corrections letter text extracted from a PDF.\n\n${INJECTION_TEST_LINE}`, true);
     return {
       outcome: 'not-blocked',
       status: result.status,
       code: null,
+      replay: result.replay,
       message: 'The gateway served this request: no block-mode guardrail refused it. Check that a prompt-injection guardrail is available on this workspace.',
     };
   } catch (error) {
     if (isGuardrailBlock(error)) {
       await ctx.deps.store.insertMessage(ctx.options.projectId, 'system', `[OTARI_GUARDRAIL] Demo payload blocked before reaching a provider: ${error.message}`);
-      return { outcome: 'blocked', ...refusal(error) };
+      const blocked = refusal(error);
+      return { outcome: 'blocked', ...blocked, message: blocked.replay ? `${REPLAY_NOTE} ${blocked.message}` : blocked.message };
     }
     return { outcome: isBudgetHold(error) ? 'held' : 'error', ...refusal(error) };
   }
 }
 
-async function providerFailover(ctx: RunContext): Promise<Omit<DemoResult, 'scenario' | 'conversationId' | 'simulated'>> {
+async function providerFailover(ctx: RunContext): Promise<DemoOutput> {
   const [primary, backup] = OTARI_MODELS.researcher;
   // Live, the primary is replaced by an unroutable ID: a real outage can't be ordered up.
   const first = ctx.simulated ? primary : process.env.OTARI_DEMO_UNAVAILABLE_MODEL || 'openai/otari-demo-unavailable';
@@ -118,20 +130,24 @@ async function providerFailover(ctx: RunContext): Promise<Omit<DemoResult, 'scen
       outcome: 'failed-over',
       status: result.status,
       code: null,
-      message: `${first} failed, and ${candidate.model} served the request on attempt 2.`,
+      replay: result.replay,
+      message: result.replay
+        ? `${first} really failed, and the client moved to ${candidate.model} on attempt 2. The gateway then returned ${result.replay.status} ${result.replay.code} for the backup, so its answer is a replay.`
+        : `${first} failed, and ${candidate.model} served the request on attempt 2.`,
     };
   } catch (error) {
     return { outcome: isBudgetHold(error) ? 'held' : 'error', ...refusal(error) };
   }
 }
 
-async function exhaustedKey(ctx: RunContext): Promise<Omit<DemoResult, 'scenario' | 'conversationId' | 'simulated'>> {
+async function exhaustedKey(ctx: RunContext): Promise<DemoOutput> {
   try {
     const { result } = await miniChat(ctx, 'drafter', 'Reply with OK.', false);
     return {
       outcome: 'not-held',
       status: result.status,
       code: null,
+      replay: null,
       message: 'The gateway served this request, so this key still has budget. OTARI_EXHAUSTED_CONTRACTOR_KEY needs a key with no budget left.',
     };
   } catch (error) {

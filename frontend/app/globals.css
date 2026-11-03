@@ -371,3 +371,10 @@
   background: hsl(var(--muted));
   font-weight: 600;
 }
+
+/* Makes room for the Otari Inspector drawer on wide screens. */
+@media (min-width: 1024px) {
+  body.otari-drawer-open {
+    padding-right: 440px;
+  }
+}

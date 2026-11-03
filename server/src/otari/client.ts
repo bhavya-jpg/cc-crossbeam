@@ -13,11 +13,16 @@
  * where it fails instead so a misconfigured deploy can't write placeholder
  * permit documents. Simulated results are flagged `simulated: true`.
  *
+ * OTARI_HYBRID_FALLBACK=true (outside production) still calls the gateway, and answers
+ * a real `402 insufficient_funds` with recorded output, flagged in `replay`. Once the
+ * account has funds the gateway serves the call and the flag never appears.
+ *
  * Header names and payloads follow docs.otari.ai guide pages. They have not yet
  * been checked on an authenticated request, so payload types stay open and every
  * Otari header is also kept verbatim in `headers.raw`.
  */
 
+import { replayResponse } from './replay.js';
 import { simulateOtariResponse, type SimScenario, type SimStage } from './simulation.js';
 
 export const OTARI_DEFAULT_BASE_URL = 'https://otari.ai/api/v1';
@@ -88,11 +93,23 @@ export function guardrailVerdict(header: string | null): string | null {
 
 // --- Request and response types ---
 
+/** The real gateway refusal behind a replayed result. */
+export interface OtariReplay {
+  requestId: string | null;
+  status: number;
+  code: string | null;
+  latencyMs: number;
+}
+
 export interface OtariResult<T> {
   data: T;
   status: number;
   headers: OtariHeaders;
   simulated: boolean;
+  /** Round trip to the gateway; 0 when simulated. */
+  latencyMs: number;
+  /** Set when the gateway refused for lack of funds and recorded output stands in. */
+  replay: OtariReplay | null;
 }
 
 export interface OtariCallOptions {
@@ -103,6 +120,8 @@ export interface OtariCallOptions {
   simStage?: SimStage;
   /** Makes the simulation reproduce a gateway failure. Never sent to the gateway. */
   simScenario?: SimScenario;
+  /** False keeps a real funds refusal as an error, even in hybrid mode. */
+  allowReplay?: boolean;
 }
 
 export interface OtariRunOptions extends OtariCallOptions {
@@ -204,6 +223,8 @@ export class OtariError extends Error {
     readonly code: string | null,
     readonly body: unknown,
     readonly headers: OtariHeaders,
+    readonly latencyMs: number = 0,
+    readonly replay: OtariReplay | null = null,
   ) {
     super(message);
   }
@@ -239,6 +260,11 @@ function errorMessage(status: number, body: unknown): string {
 }
 
 // --- Client ---
+
+/** Off in production, where recorded output must never reach a real project. */
+export function hybridFallbackEnabled(): boolean {
+  return process.env.OTARI_HYBRID_FALLBACK === 'true' && process.env.NODE_ENV !== 'production';
+}
 
 export interface OtariClientConfig {
   baseUrl?: string;
@@ -321,6 +347,8 @@ export class OtariClient {
   ): Promise<OtariResult<T>> {
     const simulated = this.isSimulating(options.contractorKey);
     let response: Response;
+    let latencyMs = 0;
+    let replay: OtariReplay | null = null;
 
     if (simulated) {
       response = simulateOtariResponse({ method, path, body, stage: options.simStage, scenario: options.simScenario });
@@ -335,15 +363,28 @@ export class OtariClient {
       if (options.runId) headers['Otari-Conversation-Id'] = options.runId;
       if (body !== undefined) headers['Content-Type'] = 'application/json';
 
+      const startedAt = Date.now();
       response = await this.fetchFn(`${this.baseUrl}${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: options.signal,
       });
+      latencyMs = Date.now() - startedAt;
+
+      if (response.status === 402 && method === 'POST' && options.allowReplay !== false && hybridFallbackEnabled()) {
+        const refusal = parseOtariHeaders(response.headers);
+        const refusalBody = (await response.clone().json().catch(() => null)) as { code?: unknown } | null;
+        const code = refusal.raw['otari-error-code'] ?? (typeof refusalBody?.code === 'string' ? refusalBody.code : null);
+        if (code === 'insufficient_funds') {
+          replay = { requestId: refusal.requestId, status: response.status, code, latencyMs };
+          response = replayResponse({ path, body, stage: options.simStage });
+        }
+      }
     }
 
     const otariHeaders = parseOtariHeaders(response.headers);
+    if (replay) otariHeaders.requestId = replay.requestId;
     const text = await response.text();
     let parsed: unknown = text;
     let isJson = false;
@@ -362,6 +403,8 @@ export class OtariClient {
         otariHeaders.raw['otari-error-code'] ?? (typeof bodyCode === 'string' ? bodyCode : null),
         parsed,
         otariHeaders,
+        latencyMs,
+        replay,
       );
     }
     if (!isJson) {
@@ -371,10 +414,11 @@ export class OtariClient {
         null,
         text,
         otariHeaders,
+        latencyMs,
       );
     }
 
-    return { data: parsed as T, status: response.status, headers: otariHeaders, simulated };
+    return { data: parsed as T, status: response.status, headers: otariHeaders, simulated, latencyMs, replay };
   }
 }
 

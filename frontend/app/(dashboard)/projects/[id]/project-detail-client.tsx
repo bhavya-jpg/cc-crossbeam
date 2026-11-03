@@ -11,6 +11,7 @@ import { AgentStream } from '@/components/agent-stream'
 import { ProgressPhases } from '@/components/progress-phases'
 import { ContractorQuestionsForm } from '@/components/contractor-questions-form'
 import { ResultsViewer } from '@/components/results-viewer'
+import { LOCAL_MODE, LOCAL_POLL_MS } from '@/lib/local-mode'
 import type { Project, ProjectFile, ProjectStatus } from '@/types/database'
 import {
   FileTextIcon,
@@ -89,9 +90,27 @@ export function ProjectDetailClient({
       starting || (!TERMINAL_STATUSES.includes(project.status) && project.status !== 'ready')
   }, [project.status, starting])
 
+  // Local mode has no Realtime, so it polls the project's status.
+  useEffect(() => {
+    if (!LOCAL_MODE) return
+    const interval = setInterval(async () => {
+      if (!shouldListenRef.current) return
+      const { data } = await supabase
+        .schema('crossbeam')
+        .from('projects')
+        .select('status, error_message')
+        .eq('id', project.id)
+        .single()
+      if (data) {
+        setProject(prev => ({ ...prev, status: data.status as ProjectStatus, error_message: data.error_message }))
+      }
+    }, LOCAL_POLL_MS)
+    return () => clearInterval(interval)
+  }, [project.id, supabase])
+
   // Realtime: project status changes — subscribe ONCE per project, stay alive
   useEffect(() => {
-    if (!realtimeReady) return
+    if (!realtimeReady || LOCAL_MODE) return
 
     const channel = supabase
       .channel(`project-status-${project.id}`)

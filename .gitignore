@@ -69,3 +69,6 @@ scripts/
 *~
 .vercel
 .env*.local
+
+# Local Supabase stand-in data
+server/.local-data/

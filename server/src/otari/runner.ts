@@ -40,6 +40,7 @@ import {
   OtariError,
   type ChatCompletionResponse,
   type OtariHeaders,
+  type OtariReplay,
   type OtariResult,
   type OtariUsage,
   type ResponsesOutputItem,
@@ -145,6 +146,10 @@ export interface OtariTelemetry {
   keySource: KeySource;
   budgetCapUsd: number;
   demoScenario: string | null;
+  /** Round trip to the gateway, in milliseconds. */
+  latencyMs: number;
+  /** Set when the gateway refused for lack of funds and recorded output was used. */
+  replay: OtariReplay | null;
 }
 
 /** One way to attempt a call: tried in order until one is served. */
@@ -161,6 +166,7 @@ export interface RunContext {
   turns: number;
   costUsd: number;
   demoScenario: string | null;
+  replayedCalls: number;
 }
 
 const log = (ctx: RunContext, role: MessageRole, content: string) =>
@@ -186,7 +192,7 @@ async function recordCall(
   candidate: Candidate,
   primaryModel: string,
   attemptNumber: number,
-  call: { headers: OtariHeaders; status: number; usage?: OtariUsage; error?: OtariError },
+  call: { headers: OtariHeaders; status: number; usage?: OtariUsage; error?: OtariError; latencyMs: number; replay: OtariReplay | null },
 ): Promise<void> {
   const { costUsd, costSource } = costOfUsage(call.usage);
   const key = describeKey(ctx.options.apiKey, ctx.simulated, ctx.options.keyLabel);
@@ -221,8 +227,17 @@ async function recordCall(
     keySource: key.source,
     budgetCapUsd: contractorBudgetCapUsd(),
     demoScenario: ctx.demoScenario,
+    latencyMs: call.latencyMs,
+    replay: call.replay,
   };
   await log(ctx, 'system', `[OTARI_TELEMETRY] ${JSON.stringify(telemetry)}`);
+
+  if (call.replay) {
+    ctx.replayedCalls += 1;
+    if (ctx.replayedCalls === 1) {
+      await log(ctx, 'system', `[OTARI_REPLAY] Otari returned ${call.replay.status} ${call.replay.code} (request ${call.replay.requestId}). Showing recorded output from an earlier run: no model is running.`);
+    }
+  }
 
   const budget = FLOW_BUDGET[ctx.options.flowType];
   if (ctx.costUsd > budget.maxBudgetUsd || ctx.turns > budget.maxTurns) {
@@ -249,11 +264,11 @@ export async function attempt<T extends { usage?: OtariUsage }>(
   for (const [index, candidate] of candidates.entries()) {
     try {
       const result = await send(candidate, AbortSignal.timeout(OTARI_REQUEST_TIMEOUT_MS));
-      await recordCall(ctx, role, stage, candidate, primaryModel, index + 1, { headers: result.headers, status: result.status, usage: result.data.usage });
+      await recordCall(ctx, role, stage, candidate, primaryModel, index + 1, { headers: result.headers, status: result.status, usage: result.data.usage, latencyMs: result.latencyMs, replay: result.replay });
       return { result, candidate };
     } catch (error) {
       if (error instanceof OtariError) {
-        await recordCall(ctx, role, stage, candidate, primaryModel, index + 1, { headers: error.headers, status: error.status, error });
+        await recordCall(ctx, role, stage, candidate, primaryModel, index + 1, { headers: error.headers, status: error.status, error, latencyMs: error.latencyMs, replay: error.replay });
       }
       if (isFatal(error)) throw error;
       lastError = error;
@@ -463,7 +478,8 @@ async function runResearcherStage(ctx: RunContext, artifacts: Artifacts): Promis
   ].filter(Boolean).join('\n\n');
 
   const search = { type: 'otari_web_search', max_uses: 5 };
-  const fetchTool = { type: 'otari_web_fetch', max_uses: 5 };
+  // The live gateway rejects any field but `type` on this tool (400, seen 2026-11-04).
+  const fetchTool = { type: 'otari_web_fetch' };
   const [primary, fallback] = OTARI_MODELS.researcher;
   // Web fetch is off by default on a deployment, so narrower tool sets are tried last.
   const candidates: Candidate[] = [[search, fetchTool], [search], []].flatMap((tools) => [
@@ -526,7 +542,7 @@ async function runAnalystStage(ctx: RunContext, artifacts: Artifacts): Promise<A
       { model: fallback, tools: [] },
     ]);
     firstContainer = result.headers.containerId;
-    firstRanCode = Boolean(candidate.tools?.length);
+    firstRanCode = Boolean(candidate.tools?.length) && !result.replay;
     servedBy = candidate.model;
     await logResponseActivity(ctx, 'analyst', result.data.output);
     return responseText(result.data);
@@ -547,7 +563,7 @@ async function runAnalystStage(ctx: RunContext, artifacts: Artifacts): Promise<A
     ];
     const { result, candidate } = await sendAnalyst('spatial-verify', SPATIAL_VERIFY_PROMPT + retryNote, verifyInput, candidates);
     secondContainer = result.headers.containerId;
-    secondRanCode = Boolean(candidate.tools?.length);
+    secondRanCode = Boolean(candidate.tools?.length) && !result.replay;
     await logResponseActivity(ctx, 'analyst', result.data.output);
     return responseText(result.data);
   });
@@ -798,6 +814,7 @@ export async function runCrossBeamFlow(options: RunFlowOptions, overrides: Parti
     turns: 0,
     costUsd: 0,
     demoScenario: null,
+    replayedCalls: 0,
   };
   let project: PreparedProject | null = null;
 
@@ -824,7 +841,7 @@ export async function runCrossBeamFlow(options: RunFlowOptions, overrides: Parti
 
     await log(ctx, 'system', 'Processing outputs...');
     const outputId = await deps.store.createOutputRecord(projectId, FLOW_PHASE[flowType], {
-      raw_artifacts: allFiles,
+      raw_artifacts: ctx.replayedCalls ? { ...allFiles, 'replay.json': { replayed_calls: ctx.replayedCalls, note: 'No model produced this run: the gateway returned 402 insufficient_funds.' } } : allFiles,
       agent_cost_usd: ctx.costUsd,
       agent_turns: ctx.turns,
       agent_duration_ms: Date.now() - startedAt,
@@ -835,7 +852,7 @@ export async function runCrossBeamFlow(options: RunFlowOptions, overrides: Parti
       await deps.store.replaceContractorQuestions(projectId, toQuestionRows(allFiles['contractor_questions.json'], projectId), outputId);
     }
 
-    await log(ctx, 'system', `Run summary: ${ctx.turns} Otari calls, $${ctx.costUsd.toFixed(4)}`);
+    await log(ctx, 'system', `Run summary: ${ctx.turns} Otari calls, $${ctx.costUsd.toFixed(4)}${ctx.replayedCalls ? `, ${ctx.replayedCalls} replayed from a recorded run` : ''}`);
     // AgentStream refreshes the page on a message starting "Completed in ".
     await log(ctx, 'system', `Completed in ${formatDuration(Date.now() - startedAt)}`);
     await deps.store.updateProjectStatus(projectId, flowType === 'corrections-analysis' ? 'awaiting-answers' : 'completed');
