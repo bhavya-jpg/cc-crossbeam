@@ -17,13 +17,16 @@
  * a real `402 insufficient_funds` with recorded output, flagged in `replay`. Once the
  * account has funds the gateway serves the call and the flag never appears.
  *
- * Header names and payloads follow docs.otari.ai guide pages. They have not yet
- * been checked on an authenticated request, so payload types stay open and every
- * Otari header is also kept verbatim in `headers.raw`.
+ * Generation calls stream by default, because otari.ai's CDN ends a request that sends
+ * nothing for about 30 seconds; see stream.ts. Pass `stream: false` to get the
+ * `Otari-Guardrails` header, which only non-streamed responses carry.
+ *
+ * Payload types stay open, and every Otari header is also kept verbatim in `headers.raw`.
  */
 
 import { replayResponse } from './replay.js';
 import { simulateOtariResponse, type SimScenario, type SimStage } from './simulation.js';
+import { collectChatStream, collectResponsesStream, StreamFailure } from './stream.js';
 
 export const OTARI_DEFAULT_BASE_URL = 'https://otari.ai/api/v1';
 
@@ -122,6 +125,11 @@ export interface OtariCallOptions {
   simScenario?: SimScenario;
   /** False keeps a real funds refusal as an error, even in hybrid mode. */
   allowReplay?: boolean;
+  /**
+   * Generation calls stream unless this is false. A non-streamed call longer than about
+   * 30 seconds is cut off by the CDN, but only it returns the `Otari-Guardrails` header.
+   */
+  stream?: boolean;
 }
 
 export interface OtariRunOptions extends OtariCallOptions {
@@ -147,7 +155,7 @@ export interface OtariUsage {
   [key: string]: unknown;
 }
 
-/** `stream` is excluded: this client only parses complete JSON responses. */
+/** `stream` is set by the client (see OtariCallOptions.stream), not by callers. */
 export interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
@@ -256,6 +264,11 @@ function errorMessage(status: number, body: unknown): string {
     }
     if (typeof error?.message === 'string') return `Otari ${status}: ${error.message}`;
   }
+  if (typeof body === 'string' && /^\s*</.test(body)) {
+    const title = /<title>([^<]*)<\/title>/i.exec(body)?.[1]?.trim();
+    // An HTML page comes from the CDN in front of the gateway, not the gateway itself.
+    return `Otari ${status}: non-JSON error page from the gateway's CDN${title ? ` (${title})` : ''}`;
+  }
   return `Otari ${status}: ${typeof body === 'string' && body ? body : 'request failed'}`;
 }
 
@@ -348,7 +361,9 @@ export class OtariClient {
     const simulated = this.isSimulating(options.contractorKey);
     let response: Response;
     let latencyMs = 0;
+    let startedAt = 0;
     let replay: OtariReplay | null = null;
+    const streamable = method === 'POST' && options.stream !== false && (path === '/chat/completions' || path === '/responses');
 
     if (simulated) {
       response = simulateOtariResponse({ method, path, body, stage: options.simStage, scenario: options.simScenario });
@@ -363,11 +378,14 @@ export class OtariClient {
       if (options.runId) headers['Otari-Conversation-Id'] = options.runId;
       if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-      const startedAt = Date.now();
+      const sent = streamable && body && typeof body === 'object'
+        ? { ...body, stream: true, ...(path === '/chat/completions' ? { stream_options: { include_usage: true } } : {}) }
+        : body;
+      startedAt = Date.now();
       response = await this.fetchFn(`${this.baseUrl}${path}`, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: sent === undefined ? undefined : JSON.stringify(sent),
         signal: options.signal,
       });
       latencyMs = Date.now() - startedAt;
@@ -386,13 +404,33 @@ export class OtariClient {
     const otariHeaders = parseOtariHeaders(response.headers);
     if (replay) otariHeaders.requestId = replay.requestId;
     const text = await response.text();
+    // A stream's latency runs to its last byte, not to its headers.
+    if (!simulated && !replay) latencyMs = Date.now() - startedAt;
     let parsed: unknown = text;
     let isJson = false;
-    try {
-      parsed = JSON.parse(text);
-      isJson = true;
-    } catch {
-      // Left as text: gateways and proxies can return non-JSON error pages.
+    if (response.ok && /text\/event-stream/i.test(response.headers.get('content-type') ?? '')) {
+      try {
+        parsed = path === '/chat/completions' ? collectChatStream(text) : collectResponsesStream(text);
+        isJson = true;
+      } catch (error) {
+        if (!(error instanceof StreamFailure)) throw error;
+        throw new OtariError(
+          `Otari ${response.status}: stream failed: ${error.message}`,
+          502,
+          otariHeaders.raw['otari-error-code'] ?? error.code,
+          error.body,
+          otariHeaders,
+          latencyMs,
+          replay,
+        );
+      }
+    } else {
+      try {
+        parsed = JSON.parse(text);
+        isJson = true;
+      } catch {
+        // Left as text: gateways and proxies can return non-JSON error pages.
+      }
     }
 
     if (!response.ok) {

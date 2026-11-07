@@ -124,6 +124,70 @@ describe('client auth and requests', () => {
   });
 });
 
+describe('client streaming', () => {
+  const chat = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
+  const sse = (events: Array<[string | null, unknown]>) =>
+    events.map(([event, data]) => `${event ? `event: ${event}\n` : ''}data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`).join('');
+  const streamHeaders = { 'Content-Type': 'text/event-stream; charset=utf-8', 'Otari-Request-ID': 's-1', 'Otari-Container-Id': 'otari_cntr_1' };
+  const chunk = (delta: unknown, finish: string | null = null) => ({ id: 'c1', model: 'm', choices: [{ index: 0, delta, finish_reason: finish }] });
+
+  it('streams chat completions and rebuilds the full response, tool calls and usage included', async () => {
+    const body = sse([
+      [null, chunk({ role: 'assistant', content: '' })],
+      [null, chunk({ content: 'Hel' })],
+      [null, chunk({ content: 'lo', reasoning_content: 'think' })],
+      [null, chunk({ tool_calls: [{ index: 0, id: 't1', type: 'function', function: { name: 'look', arguments: '{"a"' } }] })],
+      [null, chunk({ tool_calls: [{ index: 0, function: { arguments: ':1}' } }] }, 'tool_calls')],
+      [null, { id: 'c1', choices: [], usage: { prompt_tokens: 3, completion_tokens: 4, cost_usd: '0.000010' } }],
+      [null, '[DONE]'],
+    ]);
+    const m = mockFetch(200, body, streamHeaders);
+    const client = new OtariClient({ fetch: m.fetchFn, baseUrl: 'https://gw.test', apiKey: 'k' });
+    const { data, headers } = await client.chatCompletions(chat, { runId: 'r' });
+
+    const sent = JSON.parse(String(m.calls[0].init.body));
+    assert.equal(sent.stream, true);
+    assert.deepEqual(sent.stream_options, { include_usage: true });
+    assert.equal(data.choices[0].message.content, 'Hello');
+    assert.equal(data.choices[0].message.reasoning_content, 'think');
+    assert.deepEqual(data.choices[0].message.tool_calls, [{ id: 't1', type: 'function', function: { name: 'look', arguments: '{"a":1}' } }]);
+    assert.equal(data.choices[0].finish_reason, 'tool_calls');
+    assert.equal(data.usage?.cost_usd, '0.000010');
+    assert.equal(headers.requestId, 's-1');
+    assert.equal(headers.containerId, 'otari_cntr_1');
+  });
+
+  it('takes the final response from a responses stream, and reports a failed one as an error', async () => {
+    const done = { id: 'resp_1', status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '391' }] }], usage: { cost_usd: '0.010020' } };
+    const ok = mockFetch(200, sse([['response.created', { response: { id: 'resp_1' } }], ['response.output_text.delta', { delta: '391' }], ['response.completed', { response: done, type: 'response.completed' }]]), streamHeaders);
+    const result = await new OtariClient({ fetch: ok.fetchFn, baseUrl: 'https://gw.test', apiKey: 'k' }).responses({ model: 'm', input: 'x' }, { runId: 'r' });
+    assert.deepEqual(result.data, done);
+    assert.equal(JSON.parse(String(ok.calls[0].init.body)).stream_options, undefined);
+
+    const bad = mockFetch(200, sse([['response.failed', { response: { id: 'resp_2', error: { code: 'server_error', message: 'provider died' } } }]]), streamHeaders);
+    const error = await new OtariClient({ fetch: bad.fetchFn, baseUrl: 'https://gw.test', apiKey: 'k' }).responses({ model: 'm', input: 'x' }, { runId: 'r' }).catch((e) => e);
+    assert.ok(error instanceof OtariError);
+    assert.equal(error.status, 502);
+    assert.equal(error.code, 'server_error');
+    assert.match(error.message, /provider died/);
+
+    const cut = mockFetch(200, sse([['response.created', { response: { id: 'resp_3' } }]]), streamHeaders);
+    const truncated = await new OtariClient({ fetch: cut.fetchFn, baseUrl: 'https://gw.test', apiKey: 'k' }).responses({ model: 'm', input: 'x' }, { runId: 'r' }).catch((e) => e);
+    assert.match(truncated.message, /without response.completed/);
+  });
+
+  it('sends stream: false when asked, and names a CDN error page instead of quoting its HTML', async () => {
+    const m = mockFetch(200, '{"id":"x","model":"m","choices":[]}');
+    await new OtariClient({ fetch: m.fetchFn, baseUrl: 'https://gw.test', apiKey: 'k' }).chatCompletions(chat, { runId: 'r', stream: false });
+    assert.equal(JSON.parse(String(m.calls[0].init.body)).stream, undefined);
+
+    const page = '<!DOCTYPE HTML><HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY>504</BODY></HTML>';
+    const error = await new OtariClient({ fetch: mockFetch(504, page).fetchFn, baseUrl: 'https://gw.test', apiKey: 'k' }).chatCompletions(chat, { runId: 'r' }).catch((e) => e);
+    assert.equal(error.status, 504);
+    assert.equal(error.message, "Otari 504: non-JSON error page from the gateway's CDN (ERROR: The request could not be satisfied)");
+  });
+});
+
 describe('simulation mode selection', () => {
   const chat = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
 
@@ -526,6 +590,25 @@ describe('runCrossBeamFlow: corrections-analysis', () => {
     const { log } = await run(client);
     const research = client.bodies.filter((b) => b.stage === 'research');
     assert.deepEqual(research.at(-1)!.body.tools, [{ type: 'otari_web_search', max_uses: 5 }]);
+    assert.deepEqual(log.statuses, ['awaiting-answers']);
+  });
+
+  it('skips other models that ask for a tool the workspace has turned off', async () => {
+    class NoWeb extends SpyClient {
+      override responses(body: any, options: any) {
+        if (options.simStage === 'research' && body.tools?.length) {
+          this.bodies.push({ endpoint: 'responses', stage: options.simStage, body, runId: options.runId });
+          const kind = body.tools.some((t: any) => t.type === 'otari_web_fetch') ? 'web access' : 'web search';
+          return Promise.reject(new OtariError(`Otari 403: ${kind} is not enabled for this workspace`, 403, null, {}, parseOtariHeaders(new Headers())));
+        }
+        return super.responses(body, options);
+      }
+    }
+    const client = new NoWeb();
+    const { log } = await run(client);
+    const research = client.bodies.filter((b) => b.stage === 'research');
+    // One refusal per tool set, then the tool-less call: not one per model.
+    assert.deepEqual(research.map((b) => b.body.tools.length), [2, 1, 0]);
     assert.deepEqual(log.statuses, ['awaiting-answers']);
   });
 

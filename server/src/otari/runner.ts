@@ -252,6 +252,16 @@ function isFatal(error: unknown): boolean {
   return !(error instanceof TypeError || name === 'TimeoutError' || name === 'AbortError');
 }
 
+/**
+ * A tool the workspace has turned off. Another model can't help, so candidates that ask for
+ * the same tools are skipped. The refusal has no code yet (OTARI_FRICTION_LOG.md, finding 6).
+ */
+function isToolDisabled(error: unknown): boolean {
+  return error instanceof OtariError && error.status === 403 && /not enabled for this workspace/i.test(error.message);
+}
+
+const toolSet = (candidate: Candidate) => JSON.stringify((candidate.tools ?? []).map((tool) => (tool as { type?: unknown }).type).sort());
+
 export async function attempt<T extends { usage?: OtariUsage }>(
   ctx: RunContext,
   role: RoleName,
@@ -261,7 +271,9 @@ export async function attempt<T extends { usage?: OtariUsage }>(
 ): Promise<{ result: OtariResult<T>; candidate: Candidate }> {
   const primaryModel = candidates[0].model;
   let lastError: unknown;
+  const refusedTools = new Set<string>();
   for (const [index, candidate] of candidates.entries()) {
+    if (refusedTools.has(toolSet(candidate))) continue;
     try {
       const result = await send(candidate, AbortSignal.timeout(OTARI_REQUEST_TIMEOUT_MS));
       await recordCall(ctx, role, stage, candidate, primaryModel, index + 1, { headers: result.headers, status: result.status, usage: result.data.usage, latencyMs: result.latencyMs, replay: result.replay });
@@ -271,6 +283,7 @@ export async function attempt<T extends { usage?: OtariUsage }>(
         await recordCall(ctx, role, stage, candidate, primaryModel, index + 1, { headers: error.headers, status: error.status, error, latencyMs: error.latencyMs, replay: error.replay });
       }
       if (isFatal(error)) throw error;
+      if (isToolDisabled(error)) refusedTools.add(toolSet(candidate));
       lastError = error;
       const reason = error instanceof Error ? error.message : String(error);
       await log(ctx, 'system', `[OTARI] ${role}: ${candidate.model} failed (${reason.slice(0, 200)}). Trying the next option.`);

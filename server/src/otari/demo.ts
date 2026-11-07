@@ -88,6 +88,8 @@ function miniChat(ctx: RunContext, role: 'extractor' | 'drafter', content: strin
       simScenario: ctx.demoScenario === 'exhausted-key' ? 'budget-exceeded' : undefined,
       // This demo exists to show the refusal itself, so it's never replaced.
       allowReplay: ctx.demoScenario !== 'exhausted-key',
+      // A 16-token call is quick, and only a non-streamed response carries Otari-Guardrails.
+      stream: false,
     }),
   );
 }

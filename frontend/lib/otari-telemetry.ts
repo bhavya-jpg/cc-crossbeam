@@ -154,7 +154,8 @@ function summarizeRole(events: OtariTelemetryEvent[]): RoleSummary | undefined {
 
 function summarizeGuardrail(events: OtariTelemetryEvent[]): GuardrailSummary {
   // A call refused for funds never reached the guardrail, so it says nothing about it.
-  const relevant = events.filter((event) => event.blocked || event.guardrailsVerdict || (event.replay && event.guardrailMode))
+  const relevant = events.filter((event) =>
+    event.blocked || event.guardrailsVerdict || (event.guardrailMode && (event.replay || event.status === 200)))
   const last = relevant[relevant.length - 1]
   if (!last) return { label: 'No guardrail result yet', tone: 'none' }
   if (last.blocked) {
@@ -164,7 +165,11 @@ function summarizeGuardrail(events: OtariTelemetryEvent[]): GuardrailSummary {
   if (last.replay) {
     return { label: `${last.guardrailMode}: not evaluated, gateway returned ${last.replay.status}`, tone: 'warning' }
   }
-  const verdict = last.guardrailsVerdict as string
+  // Streamed responses don't carry Otari-Guardrails, so a served call can have no verdict.
+  if (!last.guardrailsVerdict) {
+    return { label: `${last.guardrailMode}: requested, no verdict on a streamed response`, tone: 'warning' }
+  }
+  const verdict = last.guardrailsVerdict
   return {
     label: `${last.guardrailMode ?? 'monitor'}: ${verdict}`,
     tone: verdict === 'passed' ? 'passed' : verdict === 'flagged' ? 'blocked' : 'warning',

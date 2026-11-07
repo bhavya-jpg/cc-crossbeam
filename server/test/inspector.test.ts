@@ -211,6 +211,19 @@ describe('demo scenarios against a live gateway', () => {
     assert.equal(guardrail.tone, 'warning');
   });
 
+  it('the demo call is not streamed, so the guardrail header can come back', async () => {
+    const { client, calls } = scriptedClient([CHAT_OK]);
+    await runDemoScenario('guardrail-block', PROJECT, { client, store: fakeStore() });
+    assert.equal(calls[0].body.stream, undefined);
+  });
+
+  it('a served, guardrailed call with no verdict says why instead of claiming one', () => {
+    const events = parseTelemetry([{ id: 1, content: `[OTARI_TELEMETRY] ${JSON.stringify({ role: 'extractor', stage: 'extract-corrections', model: 'm', status: 200, guardrailMode: 'monitor', guardrailsVerdict: null, costUsd: 0.001 })}` }]);
+    const { guardrail } = summarizeTelemetry(events);
+    assert.equal(guardrail.label, 'monitor: requested, no verdict on a streamed response');
+    assert.equal(guardrail.tone, 'warning');
+  });
+
   it('an unfunded account reports the hold instead of a block', async () => {
     const { client } = scriptedClient([NO_FUNDS]);
     const result = await runDemoScenario('guardrail-block', PROJECT, { client, store: fakeStore() });
