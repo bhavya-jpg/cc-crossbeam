@@ -80,7 +80,7 @@ export function PersonaCard({
       {/* CTAs */}
       {hasDualMode ? (
         <div className="flex gap-3">
-          <Button asChild variant="outline" className="flex-1 rounded-full font-bold font-body">
+          <Button asChild variant="outline" className="flex-1 rounded-none font-body text-sm font-medium">
             <Link href={`/projects/${projectId}?showcase=${showcaseOutputId}`}>
               <EyeIcon className="w-4 h-4 mr-2" />
               Showcase
@@ -89,14 +89,14 @@ export function PersonaCard({
           <Button
             onClick={handleRunLive}
             disabled={resetting}
-            className="flex-1 rounded-full font-bold font-body hover:shadow-[0_0_24px_rgba(45,106,79,0.3)] hover:brightness-110"
+            className="flex-1 rounded-none font-body text-sm font-medium hover:shadow-[0_8px_20px_-8px_rgba(31,59,255,0.45)] hover:brightness-110"
           >
             {resetting ? <Loader2Icon className="w-4 h-4 mr-2 animate-spin" /> : <PlayIcon className="w-4 h-4 mr-2" />}
             {resetting ? 'Preparing...' : 'Run Live'}
           </Button>
         </div>
       ) : (
-        <Button className="w-full rounded-full font-bold font-body hover:shadow-[0_0_24px_rgba(45,106,79,0.3)] hover:brightness-110">
+        <Button className="w-full rounded-none font-body text-sm font-medium hover:shadow-[0_8px_20px_-8px_rgba(31,59,255,0.45)] hover:brightness-110">
           {ctaText}
           <ArrowRightIcon className="w-4 h-4 ml-2" />
         </Button>
@@ -107,7 +107,7 @@ export function PersonaCard({
   // Dev-test mode: entire card is clickable. Judge mode: buttons handle navigation.
   if (hasDualMode) {
     return (
-      <Card className="hover-lift shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50 h-full">
+      <Card className="hover-lift shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50 h-full">
         {cardInner}
       </Card>
     )
@@ -115,7 +115,7 @@ export function PersonaCard({
 
   return (
     <Link href={`/projects/${projectId}`}>
-      <Card className="hover-lift shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50 cursor-pointer h-full">
+      <Card className="hover-lift shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50 cursor-pointer h-full">
         {cardInner}
       </Card>
     </Link>

@@ -17,33 +17,36 @@ application." Until the account has funds, no model has answered a request, so m
 
 ## 2. Features against the rubric
 
-"Proven live" means seen on a real gateway response as of 2026-11-04, when the account had $0.00.
+"Proven live" means seen on a real gateway response. Updated 2026-11-07, after the first funded run on 2026-11-06
+(Phase 1 on the Placentia project: 14 calls, $0.21, 12m27s, no replay).
 
 | Rubric item (points) | What the app does | Proven live? | To earn it |
 |---|---|---|---|
-| One open-weight model (20) | Every role defaults to one | No: no completion yet | Funds |
-| Two or more, for different purposes (10) | See the model list in section 3 | No | Funds |
-| Multiple models, distinct roles (10) | 4-stage pipeline, one model per role | Routing requests only | Funds |
-| Model routing and fallbacks (10) | Client-side retry to a backup model | Yes: a real 424 moved to the backup | Funds to complete it. A routing policy is what sets `Otari-Fallback: true` |
-| Web search or fetch (10) | Researcher role | No: `GET /tools` says `workspace_disabled` | Turn both on in your workspace, plus funds |
-| Code execution (10) | Analyst role, container reused across 2 turns | No: `GET /tools` says available | Funds |
-| MCP integrations (10) | `/api/mcp/adu-law` | No | Funds, and a public URL: on localhost the app uses a local tool loop, which isn't gateway MCP |
-| Guardrails (10) | Prompt-injection check on the extractor | No: funds are checked first | Funds, then see whether a block really fires |
-| Budgets and spending limits (10) | Stops on refusal, shows a hold | Yes: a real `402 insufficient_funds` | Better with a real key ceiling |
+| One open-weight model (20) | Every role defaults to one | Yes: Qwen3-VL, gpt-oss-120b and DeepSeek V4 Pro all served | Done |
+| Two or more, for different purposes (10) | See the model list in section 3 | Yes: vision extraction, research, analysis and drafting | Done |
+| Multiple models, distinct roles (10) | 4-stage pipeline, one model per role | Yes | Done |
+| Model routing and fallbacks (10) | Client-side retry to a backup model | Yes: a real 424 moved to the backup, which answered 200 | Done. A routing policy is what sets `Otari-Fallback: true` |
+| Web search or fetch (10) | Researcher role | No: still `workspace_disabled`, so the researcher ran on local references | Turn both on in your workspace |
+| Code execution (10) | Analyst role, container reused across 2 turns | Yes: one container served both analyst turns | Done |
+| MCP integrations (10) | `/api/mcp/adu-law` | No: without a public URL the drafter uses a local tool loop, which isn't gateway MCP | `scripts/tunnel.sh`, then one run |
+| Guardrails (10) | Prompt-injection check on the extractor | No: otari.ai has no guardrail service (`not_configured`) | `scripts/tunnel.sh` gives the gateway ours; then check Toggle 1 really blocks |
+| Budgets and spending limits (10) | Stops on refusal, shows a hold | Partly: a real `402 insufficient_funds` before the grant | A key with a spent ceiling for Toggle 3 (`403 budget_exceeded`) |
 | Per-user budgets (10) | One key per contractor via `OTARI_CONTRACTOR_KEY` | No | A contractor key with its own ceiling |
 
 Features cap at 60 points. Web search and MCP both need setup, so check you still reach 60 if you skip one.
 
-### Before you record, once funded
+### Before you record
 
 1. Turn on web search and web fetch in the workspace. `GET /tools` should stop saying `workspace_disabled`.
-2. Replace `OTARI_EXHAUSTED_CONTRACTOR_KEY` in `server/.env`. It's your main key today, which stops being exhausted the
-   moment the grant lands, so Toggle 3 would then say "No budget hold". Create a key with a very low ceiling
-   ([guide](https://docs.otari.ai/how-to-guides/set-a-budget-and-ceiling.md)) and use that.
+2. Create a key with the smallest ceiling and spend it ([guide](https://docs.otari.ai/how-to-guides/set-a-budget-and-ceiling.md)),
+   then set it as `OTARI_EXHAUSTED_CONTRACTOR_KEY` in `server/.env`. That variable holds your main key today, so Toggle 3
+   reports "not held".
 3. Create a contractor key with its own ceiling, and set `OTARI_CONTRACTOR_KEY` and `OTARI_CONTRACTOR_BUDGET_USD`.
-4. For MCP points, tunnel the server to a public https URL and set `OTARI_MCP_PUBLIC_URL`.
-5. Do one full Placentia run. Confirm the Replay banner is gone and the output is good: these models have never run on
-   this project. The $20 grant is the budget, so watch the spend.
+4. For MCP and guardrail points: `brew install cloudflared`, start the app, run `scripts/tunnel.sh`, put the printed
+   `OTARI_PUBLIC_TOOLS_URL` in `server/.env` and restart the server. The tunnel exposes only the MCP and guardrail
+   routes on port 8090, never `/generate`. The Inspector's "Gateway webhooks" section should then say "public".
+5. Restart, then do one full Placentia run, Phase 1 and Phase 2, and check Toggle 1 now says blocked. The first run's
+   Phase 1 cost $0.21, so the grant covers many runs.
 
 ## 3. Submission details
 
@@ -225,7 +228,7 @@ replayed features as working, and consider re-recording once funded.
 | 1:20 | Researcher row, Live Activity | Point at web tool lines | Search and fetch run through the gateway |
 | 1:35 | Sandbox panel | Point at the container pill | Code execution checks setbacks; the same container is reused on turn 2 |
 | 1:50 | Budget panel | Point at the bar | Real `agent_cost_usd` per call, against this contractor's key |
-| 2:05 | Questions form | Answer, click **Submit & Generate Response** | Contractor knowledge goes back in; the drafter uses the ADU law MCP server |
+| 2:05 | Questions form | Answer, click **Submit & Generate Response** | Contractor knowledge goes back in; the drafter uses the ADU law MCP server (only with the tunnel; otherwise say it's the local tool loop) |
 | 2:30 | Report | Click through the 3 tabs | The real deliverables |
 | 2:50 | Drawer | Toggle **Simulate Prompt Injection PDF** | A block-mode guardrail stops a poisoned document before a provider sees it. State plainly what happened |
 | 3:05 | Drawer | Toggle it off, then **Force Primary Provider Failover** | The amber badge: primary fails, the backup serves it |
@@ -262,6 +265,7 @@ CLOUD_RUN_URL=http://localhost:8080
 OTARI_INSPECTOR_TOKEN=<the same value>
 ```
 
-Then `./scripts/run-local.sh` (`--prod` for recording). Sign in as `judge@crossbeam.local` / `crossbeam-local`; the local
+Then `./scripts/run-local.sh` (`--prod` for recording). For gateway MCP and guardrails, run `scripts/tunnel.sh` in a
+second terminal and add the `OTARI_PUBLIC_TOOLS_URL` it prints to `server/.env`. Sign in as `judge@structura.local` / `structura-local`; the local
 login form fills these in. The app has no upload screen, so the seeded projects use the real PDFs in `test-assets/corrections/`.
 Delete `server/.local-data` to start over.

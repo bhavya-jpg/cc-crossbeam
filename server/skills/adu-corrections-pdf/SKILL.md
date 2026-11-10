@@ -117,7 +117,7 @@ Light yellow box with amber border:
 ```
 Page [N] of [M]
 AI-Assisted Draft — Not For Issuance Without Review
-CrossBeam ADU Plan Review | [Timestamp]
+Structura ADU Plan Review | [Timestamp]
 ```
 
 ### Section Order

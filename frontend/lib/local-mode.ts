@@ -4,3 +4,6 @@
  */
 export const LOCAL_MODE = process.env.NEXT_PUBLIC_CROSSBEAM_LOCAL_MODE === 'true'
 export const LOCAL_POLL_MS = 1500
+
+/** The local stand-in's only account. It refuses to run in production. */
+export const LOCAL_DEMO_USER = { email: 'judge@structura.local', password: 'structura-local' } as const

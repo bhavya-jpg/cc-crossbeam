@@ -80,7 +80,7 @@ export function ContractorQuestionsForm({ projectId, userId }: ContractorQuestio
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <Card className="shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50">
+      <Card className="shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50">
         <CardContent className="p-6 space-y-8">
           {questions.map((q, index) => (
             <div key={q.id} className="space-y-3">
@@ -138,8 +138,8 @@ export function ContractorQuestionsForm({ projectId, userId }: ContractorQuestio
         <Button
           onClick={handleSubmit}
           disabled={submitting}
-          className="rounded-full px-10 py-6 text-lg font-bold font-body
-                     hover:shadow-[0_0_20px_rgba(45,106,79,0.15)]"
+          className="rounded-none px-10 py-6 font-body text-base font-medium
+                     hover:shadow-[0_8px_20px_-8px_rgba(31,59,255,0.45)]"
           size="lg"
         >
           {submitting ? (

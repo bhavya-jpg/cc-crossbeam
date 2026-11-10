@@ -1,24 +1,37 @@
 import type { Metadata } from "next"
-import { Playfair_Display, Nunito } from "next/font/google"
+import { Newsreader, Geist, Geist_Mono } from "next/font/google"
+import { BRAND } from "@/lib/brand"
 import "./globals.css"
 
-const playfair = Playfair_Display({
+// Headlines only.
+const serif = Newsreader({
   subsets: ["latin"],
   variable: "--font-display",
-  weight: ["700", "900"],
+  weight: ["400", "500"],
+  style: ["normal", "italic"],
   display: "swap",
 })
 
-const nunito = Nunito({
+const sans = Geist({
   subsets: ["latin"],
   variable: "--font-body",
-  weight: ["400", "600", "700"],
+  display: "swap",
+})
+
+// Data only: model IDs, latency, cost.
+const mono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
   display: "swap",
 })
 
 export const metadata: Metadata = {
-  title: "CrossBeam | AI-Powered ADU Permit Review",
-  description: "AI permit review assistant for California ADUs. Built with Claude Opus 4.6.",
+  title: {
+    default: `${BRAND.name} | ${BRAND.descriptor}`,
+    template: `%s | ${BRAND.name}`,
+  },
+  description: BRAND.tagline,
+  applicationName: BRAND.name,
 }
 
 export default function RootLayout({
@@ -27,8 +40,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${playfair.variable} ${nunito.variable}`}>
-      <body className="antialiased bg-crossbeam-gradient">
+    <html lang="en" className={`${serif.variable} ${sans.variable} ${mono.variable}`}>
+      <body className="antialiased bg-structura">
         {children}
       </body>
     </html>

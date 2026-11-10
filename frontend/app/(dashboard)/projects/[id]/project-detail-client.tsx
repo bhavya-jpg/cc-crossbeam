@@ -10,6 +10,7 @@ import { AduMiniature } from '@/components/adu-miniature'
 import { AgentStream } from '@/components/agent-stream'
 import { ProgressPhases } from '@/components/progress-phases'
 import { ContractorQuestionsForm } from '@/components/contractor-questions-form'
+import { CorrectionItemsSummary } from '@/components/correction-items-summary'
 import { ResultsViewer } from '@/components/results-viewer'
 import { LOCAL_MODE, LOCAL_POLL_MS } from '@/lib/local-mode'
 import type { Project, ProjectFile, ProjectStatus } from '@/types/database'
@@ -231,7 +232,7 @@ export function ProjectDetailClient({
           <Button
             onClick={handleGoLive}
             disabled={preparingLive}
-            className="rounded-full px-8 font-bold font-body hover:shadow-[0_0_24px_rgba(45,106,79,0.3)] hover:brightness-110"
+            className="rounded-none px-8 font-body text-sm font-medium hover:shadow-[0_8px_20px_-8px_rgba(31,59,255,0.45)] hover:brightness-110"
           >
             {preparingLive ? <Loader2Icon className="w-4 h-4 mr-2 animate-spin" /> : <PlayIcon className="w-4 h-4 mr-2" />}
             {preparingLive ? 'Preparing...' : 'Run Live'}
@@ -255,11 +256,11 @@ export function ProjectDetailClient({
           <h1 className="heading-display text-foreground">{project.project_name}</h1>
           <div className="flex items-center justify-center gap-3">
             {project.city && (
-              <Badge variant="secondary" className="rounded-full font-body">
+              <Badge variant="secondary" className="rounded-none font-body">
                 {project.city}
               </Badge>
             )}
-            <Badge variant="outline" className="rounded-full font-body">
+            <Badge variant="outline" className="rounded-none font-body">
               {project.flow_type === 'city-review' ? 'City Review' : 'Corrections Analysis'}
             </Badge>
           </div>
@@ -267,7 +268,7 @@ export function ProjectDetailClient({
 
         {/* Files Card */}
         {initialFiles.length > 0 && (
-          <Card className="shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50 max-w-lg mx-auto">
+          <Card className="shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50 max-w-lg mx-auto">
             <CardContent className="p-6">
               <h3 className="heading-card text-foreground mb-4">Files</h3>
               <div className="space-y-2">
@@ -292,8 +293,8 @@ export function ProjectDetailClient({
           <Button
             onClick={handleStartAnalysis}
             disabled={starting}
-            className="rounded-full px-10 py-6 text-lg font-bold font-body
-                       hover:shadow-[0_0_24px_rgba(45,106,79,0.3)] hover:brightness-110"
+            className="rounded-none px-10 py-6 font-body text-base font-medium
+                       hover:shadow-[0_8px_20px_-8px_rgba(31,59,255,0.45)] hover:brightness-110"
             size="lg"
           >
             {starting ? (
@@ -348,7 +349,6 @@ export function ProjectDetailClient({
 
   // AWAITING ANSWERS
   if (project.status === 'awaiting-answers') {
-    // ContractorQuestionsForm will be built in Phase 5
     return (
       <div className="space-y-6 animate-fade-up">
         <div className="text-center">
@@ -357,6 +357,7 @@ export function ProjectDetailClient({
             Our AI needs your input to build the best response
           </p>
         </div>
+        <CorrectionItemsSummary projectId={project.id} />
         <ContractorQuestionsForm projectId={project.id} userId={userId} />
       </div>
     )
@@ -373,7 +374,7 @@ export function ProjectDetailClient({
               onClick={handleReset}
               disabled={resetting}
               variant="outline"
-              className="rounded-full font-body"
+              className="rounded-none font-body"
             >
               <RotateCcwIcon className="w-4 h-4 mr-2" />
               {resetting ? 'Resetting...' : 'Reset & Run Again'}
@@ -388,7 +389,7 @@ export function ProjectDetailClient({
   if (project.status === 'failed') {
     return (
       <div className="space-y-6 animate-fade-up max-w-lg mx-auto pt-12">
-        <Card className="shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-destructive/30">
+        <Card className="shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-destructive/30">
           <CardContent className="p-8 text-center space-y-4">
             <AlertCircleIcon className="w-12 h-12 text-destructive mx-auto" />
             <h2 className="heading-section text-foreground">Something went wrong</h2>
@@ -399,7 +400,7 @@ export function ProjectDetailClient({
               onClick={project.is_demo ? handleReset : handleRetry}
               disabled={resetting}
               variant="outline"
-              className="rounded-full font-body"
+              className="rounded-none font-body"
             >
               <RotateCcwIcon className="w-4 h-4 mr-2" />
               {resetting ? 'Resetting...' : 'Try Again'}

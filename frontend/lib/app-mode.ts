@@ -1,6 +1,6 @@
 export type AppMode = 'dev-test' | 'judge-demo' | 'real'
 
-const STORAGE_KEY = 'crossbeam-app-mode'
+const STORAGE_KEY = 'structura-app-mode'
 
 export function getAppMode(): AppMode {
   if (typeof window === 'undefined') return 'judge-demo'

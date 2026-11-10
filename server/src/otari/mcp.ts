@@ -134,7 +134,7 @@ aduLawMcpRouter.post('/', (req, res) => {
       rpcResult(res, id, {
         protocolVersion: typeof requested === 'string' && SUPPORTED_PROTOCOLS.includes(requested) ? requested : SUPPORTED_PROTOCOLS[0],
         capabilities: { tools: {} },
-        serverInfo: { name: 'crossbeam-adu-law', version: '1.0.0' },
+        serverInfo: { name: 'structura-adu-law', version: '1.0.0' },
       });
       return;
     }

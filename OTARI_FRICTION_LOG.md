@@ -172,6 +172,10 @@ own key), or by a `url` on the entry that points at a public https service of th
 honestly, and failing closed in block mode is the right default. What's missing is a sentence saying so on the hosted
 product.
 
+A `url` on the request entry is accepted and called: `https://example.com/...`, `http://example.com/x` and
+`https://127.0.0.1/x` were each served with `"status":"unavailable","reason":"evaluation_failed"` (2026-11-07). The guide
+says a request `url` that fails its safety check is a `400`; plain http and a loopback address didn't get one.
+
 **Impact:** our block-mode guardrail demo is served instead of refused, so guardrails can't be shown without extra
 infrastructure or a third-party key.
 

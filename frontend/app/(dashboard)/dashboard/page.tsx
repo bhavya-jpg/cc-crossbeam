@@ -14,6 +14,7 @@ import {
   SHOWCASE_CONTRACTOR_OUTPUT_ID,
 } from '@/lib/app-mode'
 import { RocketIcon } from 'lucide-react'
+import { LiveReviewCard } from '@/components/live-review-card'
 
 // Exterior pool for persona card randomization (subset — best-looking ones)
 const PERSONA_POOL = [
@@ -74,9 +75,11 @@ export default function DashboardPage() {
         <p className="text-muted-foreground text-lg font-body">
           {mode === 'dev-test'
             ? 'Dev mode — step through screens with scripted data'
-            : 'Select a demo scenario to run CrossBeam live'}
+            : 'Select a demo scenario to run Structura live'}
         </p>
       </div>
+
+      {mode === 'judge-demo' && <LiveReviewCard />}
 
       {/* Persona Cards */}
       <div className="grid gap-8 md:grid-cols-2 max-w-4xl mx-auto">

@@ -1,6 +1,6 @@
 export type Persona = 'contractor' | 'city'
 
-const STORAGE_KEY = 'crossbeam-dashboard-persona'
+const STORAGE_KEY = 'structura-dashboard-persona'
 
 export function getPersona(): Persona {
   if (typeof window === 'undefined') return 'city'

@@ -152,9 +152,9 @@ export function ResultsViewer({ projectId, flowType, pinnedOutputId }: ResultsVi
       )}
 
       {/* Content — full width */}
-      <Card className="shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50">
+      <Card className="shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50">
         <CardContent className="p-8">
-          <div className="prose-crossbeam">
+          <div className="prose-structura">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {getContent(activeTab) || 'No content available for this tab.'}
             </ReactMarkdown>

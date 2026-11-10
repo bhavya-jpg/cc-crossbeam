@@ -66,7 +66,7 @@ export function CityDashboard() {
 
   const stats = [
     { label: 'Completed', count: completed, icon: CheckCircle2Icon, color: 'text-primary' },
-    { label: 'In Review', count: inReview, icon: ClockIcon, color: 'text-amber-600' },
+    { label: 'In Review', count: inReview, icon: ClockIcon, color: 'text-warning' },
     { label: 'Pending', count: pending, icon: CircleDotIcon, color: 'text-muted-foreground' },
     { label: 'Failed', count: failed, icon: AlertCircleIcon, color: 'text-destructive' },
   ].filter(s => s.count > 0)
@@ -106,7 +106,7 @@ export function CityDashboard() {
           const status = getStatusConfig(project.status)
           return (
             <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="hover-lift shadow-[0_4px_16px_rgba(28,25,23,0.06)] border-border/50 cursor-pointer transition-all">
+              <Card className="hover-lift shadow-[0_8px_24px_-12px_rgba(10,10,10,0.25)] border-border/50 cursor-pointer transition-all">
                 <CardContent className="p-0">
                   <div className="flex items-center gap-4 px-5 py-4">
                     {/* ADU Thumbnail */}

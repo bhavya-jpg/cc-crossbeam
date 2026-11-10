@@ -169,7 +169,7 @@ export function AgentStream({ projectId }: AgentStreamProps) {
   const isStale = staleSeconds * 1000 >= STALE_THRESHOLD_MS && activity.length > 0
 
   return (
-    <div className="flex flex-col h-full max-h-[400px] bg-card rounded-xl shadow-[0_8px_32px_rgba(28,25,23,0.08)] border border-border/50 overflow-hidden">
+    <div className="flex flex-col h-full max-h-[400px] bg-card shadow-[0_1px_2px_rgba(10,10,10,0.04)] border border-border/50 overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-border/50 flex items-center gap-3">
         <div className={cn(

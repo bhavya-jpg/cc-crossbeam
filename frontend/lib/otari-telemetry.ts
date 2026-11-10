@@ -47,6 +47,8 @@ export interface OtariTelemetryEvent {
   latencyMs: number
   /** The gateway's real refusal, when recorded output stands in for this call. */
   replay: OtariRefusal | null
+  /** Whether the gateway could reach our MCP server and guardrail service. Absent on older events. */
+  publicWebhooks?: { mcp: boolean; guardrail: boolean }
 }
 
 export interface OtariRefusal {
@@ -124,9 +126,19 @@ export interface SourceSummary {
   lastRefusal: OtariRefusal | null
 }
 
+export interface WebhookSummary {
+  label: string
+  detail: string
+  /** True when both webhooks were public for the latest call. */
+  public: boolean
+}
+
+export const LOCAL_WEBHOOKS_LABEL = 'MCP & Guardrail Webhooks: Localhost Fallback Active (Direct Skill Injection)'
+
 export interface TelemetrySummary {
   roles: Partial<Record<OtariRoleId, RoleSummary>>
   guardrail: GuardrailSummary
+  webhooks: WebhookSummary | null
   container: ContainerSummary | null
   budget: BudgetSummary | null
   source: SourceSummary
@@ -205,6 +217,24 @@ function summarizeBudget(events: OtariTelemetryEvent[]): BudgetSummary | null {
   }
 }
 
+function summarizeWebhooks(events: OtariTelemetryEvent[]): WebhookSummary | null {
+  const last = [...events].reverse().find((event) => event.publicWebhooks)?.publicWebhooks
+  if (!last) return null
+  if (!last.mcp && !last.guardrail) {
+    return {
+      label: LOCAL_WEBHOOKS_LABEL,
+      detail: 'No public URL, so the drafter reads the law references through a local tool loop, and the gateway cannot run the guardrail check.',
+      public: false,
+    }
+  }
+  const part = (name: string, on: boolean, off: string) => `${name}: ${on ? 'called by the gateway' : off}`
+  return {
+    label: last.mcp && last.guardrail ? 'MCP & Guardrail Webhooks: public, called by the gateway' : 'MCP & Guardrail Webhooks: partly public',
+    detail: [part('MCP', last.mcp, 'local tool loop'), part('Guardrail', last.guardrail, 'not reachable, so not evaluated')].join(' · '),
+    public: last.mcp && last.guardrail,
+  }
+}
+
 function summarizeSource(events: OtariTelemetryEvent[]): SourceSummary {
   const replayed = events.filter((event) => event.replay)
   const simulatedCalls = events.filter((event) => event.simulated).length
@@ -226,6 +256,7 @@ export function summarizeTelemetry(events: OtariTelemetryEvent[]): TelemetrySumm
   return {
     roles,
     guardrail: summarizeGuardrail(events),
+    webhooks: summarizeWebhooks(events),
     container: summarizeContainer(events),
     budget: summarizeBudget(events),
     source: summarizeSource(events),

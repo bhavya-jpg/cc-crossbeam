@@ -5,6 +5,7 @@ import {
   AlertTriangleIcon,
   BoxIcon,
   ChevronRightIcon,
+  GlobeIcon,
   KeyRoundIcon,
   Loader2Icon,
   PanelRightOpenIcon,
@@ -85,7 +86,7 @@ function SourceBanner({ source }: { source: SourceSummary }) {
   if (!replayedCalls && !simulatedCalls) return null
   const requestId = lastRefusal?.requestId?.slice(0, 8)
   return (
-    <div className="space-y-0.5 rounded-xl border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground font-body">
+    <div className="space-y-0.5 border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground font-body">
       {replayedCalls > 0 && lastRefusal && (
         <p>
           <span className="font-semibold text-foreground">Replay mode.</span>{' '}
@@ -105,7 +106,7 @@ function SourceBanner({ source }: { source: SourceSummary }) {
 function Section({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">
+      <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground font-body">
         <Icon className="size-3.5" aria-hidden />
         {title}
       </h3>
@@ -132,7 +133,7 @@ function attemptLabel(role: RoleSummary): string {
 
 function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
   return (
-    <ul className="divide-y divide-border/50 rounded-xl border border-border/50">
+    <ul className="divide-y divide-border/50 border border-border/50">
       {OTARI_ROLES.map(({ id, label, job }) => {
         const role = roles[id]
         const refused = role && role.status >= 400
@@ -142,9 +143,9 @@ function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
               <span className="text-sm font-semibold text-foreground font-body">{label}</span>
               {!role && <span className="text-xs text-muted-foreground font-body">{job}</span>}
               <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                {role?.demo && <Badge variant="outline" className="rounded-full font-body text-[10px] text-muted-foreground">DEMO</Badge>}
+                {role?.demo && <Badge variant="outline" className="rounded-none font-body text-[10px] text-muted-foreground">DEMO</Badge>}
                 {role?.failover && (
-                  <Badge className="rounded-full border-amber-300 bg-amber-100 font-body text-[10px] font-bold text-amber-900">
+                  <Badge className="rounded-none border-warning/35 bg-warning/10 font-body text-[10px] font-bold text-warning">
                     FAILOVER TRIGGERED
                   </Badge>
                 )}
@@ -153,7 +154,7 @@ function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
             {role ? (
               <>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="outline" className="max-w-full rounded-full font-mono text-[11px]">
+                  <Badge variant="outline" className="max-w-full rounded-none font-mono text-[11px]">
                     <span className="truncate">{role.model ?? 'unknown model'}</span>
                   </Badge>
                   {role.replay ? (
@@ -166,7 +167,7 @@ function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
                     </Badge>
                   )}
                   {refused && (
-                    <Badge variant="destructive" className="rounded-full font-body text-[11px]">
+                    <Badge variant="destructive" className="rounded-none font-body text-[11px]">
                       {role.status}{role.errorCode ? ` ${role.errorCode}` : ''}
                     </Badge>
                   )}
@@ -187,15 +188,37 @@ function RoutingTable({ roles }: { roles: TelemetrySummary['roles'] }) {
   )
 }
 
+function expiryLabel(expiresAt: string): string {
+  const at = new Date(expiresAt)
+  const sameDay = at.toDateString() === new Date().toDateString()
+  const when = sameDay ? at.toLocaleTimeString() : at.toLocaleString()
+  return `${at.getTime() < Date.now() ? 'Expired' : 'Expires'} ${when}`
+}
+
+function WebhookStatus({ webhooks }: { webhooks: TelemetrySummary['webhooks'] }) {
+  if (!webhooks) return <p className="text-sm text-muted-foreground font-body">Not recorded for these calls</p>
+  return (
+    <div
+      className={cn(
+        'space-y-1 border p-3',
+        webhooks.public ? 'border-primary/30 bg-primary/5 text-primary' : 'border-border/50 text-foreground',
+      )}
+    >
+      <p className="text-sm font-semibold font-body">{webhooks.label}</p>
+      <p className="text-xs text-muted-foreground font-body">{webhooks.detail}</p>
+    </div>
+  )
+}
+
 function GuardrailShield({ guardrail }: { guardrail: TelemetrySummary['guardrail'] }) {
   const Icon = guardrail.tone === 'blocked' ? ShieldAlertIcon : guardrail.tone === 'passed' ? ShieldCheckIcon : ShieldIcon
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-xl border p-3',
+        'flex items-center gap-3 border p-3',
         guardrail.tone === 'blocked' && 'border-destructive/40 bg-destructive/10 text-destructive',
         guardrail.tone === 'passed' && 'border-primary/30 bg-primary/5 text-primary',
-        guardrail.tone === 'warning' && 'border-amber-300 bg-amber-50 text-amber-900',
+        guardrail.tone === 'warning' && 'border-border bg-secondary text-foreground',
         guardrail.tone === 'none' && 'border-border/50 text-muted-foreground',
       )}
     >
@@ -208,17 +231,17 @@ function GuardrailShield({ guardrail }: { guardrail: TelemetrySummary['guardrail
 function ContainerPill({ container }: { container: TelemetrySummary['container'] }) {
   if (!container) return <Empty>No code container has run yet. The analyst role opens one on a live model call.</Empty>
   return (
-    <div className="space-y-1.5 rounded-xl border border-border/50 p-3">
+    <div className="space-y-1.5 border border-border/50 p-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" className="max-w-full rounded-full font-mono text-[11px]">
+        <Badge variant="outline" className="max-w-full rounded-none font-mono text-[11px]">
           <span className="truncate">{container.id}</span>
         </Badge>
-        <Badge className={cn('rounded-full font-body text-[11px]', !container.reused && 'bg-muted text-foreground')}>
+        <Badge className={cn('rounded-none font-body text-[11px]', !container.reused && 'bg-muted text-foreground')}>
           {container.reused ? `Reused across ${container.turns} turns` : 'Used on 1 turn'}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground font-body">
-        {container.expiresAt ? `Expires ${new Date(container.expiresAt).toLocaleTimeString()}` : 'The gateway reported no expiry'}
+        {container.expiresAt ? expiryLabel(container.expiresAt) : 'The gateway reported no expiry'}
       </p>
     </div>
   )
@@ -228,17 +251,17 @@ function BudgetBar({ budget }: { budget: TelemetrySummary['budget'] }) {
   if (!budget) return <Empty>No spend yet.</Empty>
   const holdDetail = [budget.holdStatus, budget.holdCode, budget.holdScope && `scope: ${budget.holdScope}`].filter(Boolean).join(' · ')
   return (
-    <div className="space-y-2 rounded-xl border border-border/50 p-3">
+    <div className="space-y-2 border border-border/50 p-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" className="max-w-full rounded-full font-mono text-[11px]">
+        <Badge variant="outline" className="max-w-full rounded-none font-mono text-[11px]">
           <span className="truncate">{budget.keyLabel}</span>
         </Badge>
         <Badge
           variant={budget.state === 'hold' ? 'destructive' : 'default'}
           className={cn(
-            'ml-auto rounded-full font-body text-[11px]',
+            'ml-auto rounded-none font-body text-[11px]',
             budget.state === 'ok' && 'bg-primary/10 text-primary',
-            (budget.state === 'over-cap' || budget.state === 'no-funds') && 'border-amber-300 bg-amber-100 text-amber-900',
+            (budget.state === 'over-cap' || budget.state === 'no-funds') && 'border-warning/35 bg-warning/10 text-warning',
           )}
         >
           {budget.state === 'hold' ? 'HOLD' : budget.state === 'over-cap' ? 'Over display cap' : budget.state === 'no-funds' ? 'No funds' : 'No hold'}
@@ -326,20 +349,20 @@ function TraceExplorer({ conversations }: { conversations: string[] }) {
       {state.data && (
         <>
           <div className="space-y-1">
-            <Badge className={cn('rounded-full font-body text-[11px]', state.data.source === 'collected' && 'bg-muted text-foreground')}>
+            <Badge className={cn('rounded-none font-body text-[11px]', state.data.source === 'collected' && 'bg-muted text-foreground')}>
               {state.data.source === 'gateway' ? 'Gateway trace' : 'Server-collected telemetry'}
             </Badge>
             {state.data.reason && <p className="text-xs text-muted-foreground font-body">{state.data.reason}</p>}
           </div>
 
           {state.data.source === 'gateway' ? (
-            <pre className="max-h-96 overflow-auto rounded-xl border border-border/50 bg-muted/30 p-3 font-mono text-[11px] text-foreground">
+            <pre className="max-h-96 overflow-auto border border-border/50 bg-muted/30 p-3 font-mono text-[11px] text-foreground">
               {JSON.stringify(state.data.trace, null, 2)}
             </pre>
           ) : state.data.spans.length === 0 ? (
             <Empty>No spans were collected for this conversation.</Empty>
           ) : (
-            <ol className="divide-y divide-border/50 rounded-xl border border-border/50">
+            <ol className="divide-y divide-border/50 border border-border/50">
               {state.data.spans.map((span, index) => (
                 <li key={span.requestId ?? index} className="space-y-1 p-3">
                   <div className="flex items-center gap-2 text-sm font-body">
@@ -381,7 +404,7 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
   return (
     <aside
       aria-label="Otari.ai Control Plane"
-      className="fixed inset-y-0 right-0 z-[60] flex w-full flex-col border-l border-border/50 bg-card shadow-[0_8px_32px_rgba(28,25,23,0.16)] sm:w-[440px]"
+      className="fixed inset-y-0 right-0 z-[60] flex w-full flex-col border-l border-border/50 bg-card shadow-[0_1px_2px_rgba(10,10,10,0.04)] sm:w-[440px]"
     >
       <header className="space-y-3 border-b border-border/50 p-4">
         <div className="flex items-center gap-2">
@@ -392,7 +415,7 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground font-body">Live Judge Demo</p>
+          <p className="text-xs font-medium text-muted-foreground font-body">Live Judge Demo</p>
           {DEMO_TOGGLES.map(({ scenario, label }) => {
             const demo = demos[scenario]
             const on = demo !== undefined
@@ -450,20 +473,20 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
               key={scenario}
               role="alert"
               className={cn(
-                'flex gap-3 rounded-xl border p-3',
-                severe ? 'border-destructive/40 bg-destructive/10' : 'border-amber-300 bg-amber-50',
+                'flex gap-3 border p-3',
+                severe ? 'border-destructive/40 bg-destructive/10' : 'border-warning/35 bg-warning/[0.06]',
               )}
             >
-              <AlertTriangleIcon className={cn('mt-0.5 size-4 shrink-0', severe ? 'text-destructive' : 'text-amber-700')} aria-hidden />
+              <AlertTriangleIcon className={cn('mt-0.5 size-4 shrink-0', severe ? 'text-destructive' : 'text-warning')} aria-hidden />
               <div className="min-w-0 space-y-1">
-                <p className={cn('text-sm font-semibold font-body', severe ? 'text-destructive' : 'text-amber-900')}>
+                <p className={cn('text-sm font-semibold font-body', severe ? 'text-destructive' : 'text-warning')}>
                   {result ? OUTCOME_TITLE[result.outcome] : 'The demo call failed'}
                 </p>
                 <p className="break-words text-xs text-foreground font-body">{result?.message ?? demo.error}</p>
                 {result && (
                   <div className="flex flex-wrap gap-1.5">
                     {result.status !== null && !result.replay && (
-                      <Badge variant="outline" className="rounded-full font-mono text-[10px]">
+                      <Badge variant="outline" className="rounded-none font-mono text-[10px]">
                         {result.status}{result.code ? ` ${result.code}` : ''}
                       </Badge>
                     )}
@@ -478,6 +501,7 @@ export function OtariInspectorView({ events, demos, onToggleDemo, onClose }: Ota
           <>
             <Section icon={RouteIcon} title="Multi-model routing"><RoutingTable roles={summary.roles} /></Section>
             <Section icon={ShieldIcon} title="Inference guardrails"><GuardrailShield guardrail={summary.guardrail} /></Section>
+            <Section icon={GlobeIcon} title="Gateway webhooks"><WebhookStatus webhooks={summary.webhooks} /></Section>
             <Section icon={BoxIcon} title="Sandbox container"><ContainerPill container={summary.container} /></Section>
             <Section icon={KeyRoundIcon} title="Contractor key and budget"><BudgetBar budget={summary.budget} /></Section>
           </>
@@ -582,7 +606,7 @@ export function OtariInspectorDrawer({ projectId, defaultOpen = false }: OtariIn
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed right-0 top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-border/50 bg-card px-3 py-3 text-sm font-semibold text-foreground shadow-[0_8px_32px_rgba(28,25,23,0.16)] transition-colors font-body hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="fixed right-0 top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-xl border border-r-0 border-border/50 bg-card px-3 py-3 text-sm font-semibold text-foreground shadow-[0_1px_2px_rgba(10,10,10,0.04)] transition-colors font-body hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <PanelRightOpenIcon className="size-4" aria-hidden />
         Otari

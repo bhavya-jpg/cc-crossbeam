@@ -6,13 +6,14 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { AduMiniature } from '@/components/adu-miniature'
 import { Loader2Icon, LogInIcon } from 'lucide-react'
-import { LOCAL_MODE } from '@/lib/local-mode'
+import { LOCAL_DEMO_USER, LOCAL_MODE } from '@/lib/local-mode'
+import { BRAND } from '@/lib/brand'
+import { StructuraMark } from '@/components/structura-mark'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState(LOCAL_MODE ? 'judge@crossbeam.local' : '')
-  const [password, setPassword] = useState(LOCAL_MODE ? 'crossbeam-local' : '')
+  const [email, setEmail] = useState<string>(LOCAL_MODE ? LOCAL_DEMO_USER.email : '')
+  const [password, setPassword] = useState<string>(LOCAL_MODE ? LOCAL_DEMO_USER.password : '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -38,20 +39,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-topo-lines">
-      <Card className="relative z-10 w-full max-w-md shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50 animate-fade-up">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-grid">
+      <Card className="relative z-10 w-full max-w-md shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50 animate-fade-up">
         <CardContent className="pt-10 pb-8 px-8 text-center space-y-8">
           {/* ADU Miniature — small, accent size */}
           <div className="flex justify-center">
-            <AduMiniature variant="accent" />
+            <StructuraMark className="size-12" />
           </div>
 
           {/* Branding */}
           <div className="space-y-2">
-            <h1 className="heading-display text-foreground">CrossBeam</h1>
-            <p className="text-muted-foreground font-body">
-              AI-Powered Permit Review for California ADUs
-            </p>
+            <h1 className="heading-display text-foreground">{BRAND.name}</h1>
+            <p className="text-muted-foreground font-body">{BRAND.descriptor}</p>
           </div>
 
           {/* Login Form */}
@@ -77,8 +76,8 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full px-8 py-6 text-base font-bold font-body
-                         hover:shadow-[0_0_24px_rgba(45,106,79,0.3)] hover:brightness-110"
+              className="w-full rounded-none px-8 py-6 font-body text-base font-medium
+                         hover:shadow-[0_8px_20px_-8px_rgba(31,59,255,0.45)] hover:brightness-110"
               size="lg"
             >
               {loading ? (

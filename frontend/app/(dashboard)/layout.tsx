@@ -16,7 +16,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-topo-lines">
+    <div className="min-h-screen bg-grid">
       <NavBar userEmail={user.email || ''} />
       <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}

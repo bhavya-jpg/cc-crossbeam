@@ -1,5 +1,5 @@
 /**
- * Runs a CrossBeam flow through the Otari gateway as a fixed 4-stage pipeline:
+ * Runs a Structura flow through the Otari gateway as a fixed 4-stage pipeline:
  *
  *   1 Extractor (chat + guardrail) -> 2 Researcher (web tools)
  *     -> 3 Analyst (code execution) -> 4 Drafter (law references)
@@ -62,6 +62,9 @@ import {
 } from './prompts.js';
 import type { SimStage } from './simulation.js';
 import { readWorkflowDoc, selectReferences } from './skills.js';
+import { reachableGuardrailUrl, reachableMcpUrl } from './public-urls.js';
+
+export { reachableGuardrailUrl, reachableMcpUrl };
 
 const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures');
 
@@ -150,6 +153,8 @@ export interface OtariTelemetry {
   latencyMs: number;
   /** Set when the gateway refused for lack of funds and recorded output was used. */
   replay: OtariReplay | null;
+  /** Whether the gateway could reach our MCP server and guardrail service. */
+  publicWebhooks: { mcp: boolean; guardrail: boolean };
 }
 
 /** One way to attempt a call: tried in order until one is served. */
@@ -229,6 +234,7 @@ async function recordCall(
     demoScenario: ctx.demoScenario,
     latencyMs: call.latencyMs,
     replay: call.replay,
+    publicWebhooks: publicWebhooks(),
   };
   await log(ctx, 'system', `[OTARI_TELEMETRY] ${JSON.stringify(telemetry)}`);
 
@@ -362,12 +368,23 @@ function inlineReferences(references: Array<{ id: string; text: string }>): stri
 
 // --- Stage 1: Extractor and guardrail gate ---
 
+/**
+ * otari.ai has no guardrails service, so the entry names ours when the gateway can reach
+ * it (guardrail-service.ts). Without one the gateway reports the check as unavailable.
+ */
 export function guardrailsField(options: Pick<RunFlowOptions, 'simulateGuardrailBlock'>) {
+  const url = reachableGuardrailUrl();
   return [{
     profile: 'prompt-injection',
     mode: options.simulateGuardrailBlock ? 'block' : 'monitor',
     on_unavailable: 'monitor',
+    ...(url ? { url } : {}),
   }];
+}
+
+/** Which of the gateway-facing webhooks are public for this call, for the Inspector. */
+function publicWebhooks(): OtariTelemetry['publicWebhooks'] {
+  return { mcp: reachableMcpUrl() !== null, guardrail: reachableGuardrailUrl() !== null };
 }
 
 async function callExtractor(
@@ -622,22 +639,6 @@ const DRAFT_PLANS: Record<InternalFlowType, { stage: SimStage; prompt: string; f
   },
 };
 
-/** The MCP URL, if the gateway could reach it. Docs require https when a token is sent. */
-export function reachableMcpUrl(): string | null {
-  const configured = process.env.OTARI_MCP_PUBLIC_URL;
-  if (!configured) return null;
-  let url: URL;
-  try {
-    url = new URL(configured);
-  } catch {
-    return null;
-  }
-  const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.hostname.endsWith('.local');
-  if (isLocal) return null;
-  if (process.env.MCP_ADU_LAW_TOKEN && url.protocol !== 'https:') return null;
-  return configured;
-}
-
 async function draftViaManagedMcp(
   ctx: RunContext,
   stage: SimStage,
@@ -815,14 +816,14 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-export async function runCrossBeamFlow(options: RunFlowOptions, overrides: Partial<RunnerDeps> = {}): Promise<void> {
+export async function runStructuraFlow(options: RunFlowOptions, overrides: Partial<RunnerDeps> = {}): Promise<void> {
   const deps: RunnerDeps = { client: overrides.client ?? otari, store: overrides.store ?? defaultStore };
   const startedAt = Date.now();
   const { flowType, projectId } = options;
   const ctx: RunContext = {
     deps,
     options,
-    runId: `crossbeam-${projectId}-${startedAt}`,
+    runId: `structura-${projectId}-${startedAt}`,
     simulated: deps.client.isSimulating(options.apiKey),
     turns: 0,
     costUsd: 0,

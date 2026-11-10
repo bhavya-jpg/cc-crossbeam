@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { forwardToOtariServer } from '@/lib/otari-proxy'
 
-const CONVERSATION_ID = /^crossbeam-(?:demo-)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$/i
+// structura- for new runs; crossbeam- for runs recorded before the rename.
+const CONVERSATION_ID = /^(?:structura|crossbeam)-(?:demo-)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$/i
 
 export async function GET(
   request: NextRequest,

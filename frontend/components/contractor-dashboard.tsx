@@ -70,7 +70,7 @@ export function ContractorDashboard() {
           const status = getStatusConfig(project.status)
           return (
             <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="hover-lift shadow-[0_8px_32px_rgba(28,25,23,0.08)] border-border/50 cursor-pointer h-full">
+              <Card className="hover-lift shadow-[0_1px_2px_rgba(10,10,10,0.04)] border-border/50 cursor-pointer h-full">
                 <CardContent className="p-6 space-y-4">
                   {/* ADU Miniature */}
                   <div className="relative w-full h-28 flex items-center justify-center">

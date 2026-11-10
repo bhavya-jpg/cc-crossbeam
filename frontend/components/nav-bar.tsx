@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -21,7 +20,10 @@ import {
   RocketIcon,
   LayoutGridIcon,
   BookOpenIcon,
+  GitBranchIcon,
 } from 'lucide-react'
+import { StructuraMark } from '@/components/structura-mark'
+import { BRAND, REPO_URL } from '@/lib/brand'
 import { useAppMode } from '@/hooks/use-app-mode'
 import { setAppMode, type AppMode } from '@/lib/app-mode'
 
@@ -53,36 +55,36 @@ export function NavBar({ userEmail }: NavBarProps) {
 
   const ModeIcon = MODE_CONFIG[mode].icon
 
+  const cell = 'flex items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:text-foreground'
   return (
-    <nav className="border-b border-border/50 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="heading-card text-primary">CrossBeam</span>
+    <nav className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-6xl items-stretch justify-between px-4 sm:px-6 lg:px-8">
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <StructuraMark className="size-5" />
+          <span className="font-display text-xl leading-none tracking-[-0.01em] text-foreground">{BRAND.name}</span>
         </Link>
 
-        <div className="flex items-center gap-2">
-          <Link href="/my-projects">
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
-              <LayoutGridIcon className="w-4 h-4" />
-              <span className="text-sm font-body hidden sm:inline">Projects</span>
-            </Button>
+        <div className="flex items-stretch">
+          <Link href="/my-projects" className={cell}>
+            <LayoutGridIcon className="size-3.5" />
+            <span className="hidden sm:inline">Projects</span>
           </Link>
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
-              <BookOpenIcon className="w-4 h-4" />
-              <span className="text-sm font-body hidden sm:inline">How It Works</span>
-            </Button>
+          <Link href="/" className={cell}>
+            <BookOpenIcon className="size-3.5" />
+            <span className="hidden sm:inline">How it works</span>
           </Link>
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={cell}>
+            <GitBranchIcon className="size-3.5" />
+            <span className="hidden sm:inline">Source</span>
+          </a>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <ModeIcon className="w-4 h-4 text-primary" />
-                <span className="text-sm text-muted-foreground font-body hidden sm:inline">
-                  {userEmail}
-                </span>
-                <ChevronDownIcon className="w-4 h-4 text-muted-foreground" />
-              </Button>
+              <button type="button" className={`${cell} pr-0`}>
+                <ModeIcon className="size-3.5 text-primary" />
+                <span className="hidden sm:inline">{userEmail}</span>
+                <ChevronDownIcon className="size-3.5" />
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuLabel>Mode</DropdownMenuLabel>

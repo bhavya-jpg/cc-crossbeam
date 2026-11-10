@@ -13,7 +13,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'test-key';
 
 const { OtariClient, OtariError, guardrailVerdict, isGuardrailBlock, parseOtariHeaders } = await import('../src/otari/client.js');
 const { aduLawMcpRouter, callAduLawTool } = await import('../src/otari/mcp.js');
-const { costOfUsage, formatDuration, parseFiles, reachableMcpUrl, runCrossBeamFlow, toQuestionRows } = await import('../src/otari/runner.js');
+const { costOfUsage, formatDuration, parseFiles, reachableMcpUrl, runStructuraFlow, toQuestionRows } = await import('../src/otari/runner.js');
 const { SIMULATED_BANNER } = await import('../src/otari/simulation.js');
 const { searchReferences, selectReferences } = await import('../src/otari/skills.js');
 
@@ -21,7 +21,7 @@ type Client = InstanceType<typeof OtariClient>;
 
 const ENV_KEYS = [
   'OTARI_API_KEY', 'OTARI_MASTER_KEY', 'OTARI_DEMO_SIMULATION', 'OTARI_MCP_PUBLIC_URL',
-  'MCP_ADU_LAW_TOKEN', 'OTARI_BASE_URL', 'NODE_ENV',
+  'MCP_ADU_LAW_TOKEN', 'OTARI_BASE_URL', 'OTARI_PUBLIC_TOOLS_URL', 'OTARI_GUARDRAIL_URL', 'NODE_ENV',
 ];
 let savedEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
@@ -438,10 +438,10 @@ const downloads = () => ({
 const telemetryOf = (messages: Array<{ content: string }>) =>
   messages.filter((m) => m.content.startsWith('[OTARI_TELEMETRY] ')).map((m) => JSON.parse(m.content.slice('[OTARI_TELEMETRY] '.length)));
 
-describe('runCrossBeamFlow: corrections-analysis', () => {
+describe('runStructuraFlow: corrections-analysis', () => {
   async function run(client: SpyClient = new SpyClient(), extra: object = {}) {
     const { store, log } = fakeStore(downloads());
-    await runCrossBeamFlow(
+    await runStructuraFlow(
       { ...IDS, files: ANALYSIS_FILES, flowType: 'corrections-analysis', city: 'Placentia', address: '1 Main St', ...extra },
       { client: client as Client, store: store as any },
     );
@@ -628,7 +628,7 @@ describe('runCrossBeamFlow: corrections-analysis', () => {
     const client = new SpyClient();
     const { store, log } = fakeStore(downloads());
     await assert.rejects(
-      runCrossBeamFlow(
+      runStructuraFlow(
         { ...IDS, files: ANALYSIS_FILES, flowType: 'corrections-analysis', city: 'Placentia', simulateGuardrailBlock: true },
         { client: client as Client, store: store as any },
       ),
@@ -647,7 +647,7 @@ describe('runCrossBeamFlow: corrections-analysis', () => {
   it('fails clearly when there is no corrections letter', async () => {
     const { store, log } = fakeStore(downloads());
     await assert.rejects(
-      runCrossBeamFlow(
+      runStructuraFlow(
         { ...IDS, files: [ANALYSIS_FILES[1]], flowType: 'corrections-analysis', city: 'Placentia' },
         { client: new SpyClient() as Client, store: store as any },
       ),
@@ -663,7 +663,7 @@ describe('runCrossBeamFlow: corrections-analysis', () => {
 
   it('does not reuse the Placentia manifest for another city', async () => {
     const { store, log } = fakeStore(downloads());
-    await runCrossBeamFlow(
+    await runStructuraFlow(
       { ...IDS, files: ANALYSIS_FILES, flowType: 'corrections-analysis', city: 'Fresno' },
       { client: new SpyClient() as Client, store: store as any },
     );
@@ -672,11 +672,11 @@ describe('runCrossBeamFlow: corrections-analysis', () => {
   });
 });
 
-describe('runCrossBeamFlow: corrections-response', () => {
+describe('runStructuraFlow: corrections-response', () => {
   it('runs only the drafter and writes the three deliverables, labelled as simulated', async () => {
     const client = new SpyClient();
     const { store, log } = fakeStore({});
-    await runCrossBeamFlow(
+    await runStructuraFlow(
       {
         ...IDS,
         files: [],
@@ -704,7 +704,7 @@ describe('runCrossBeamFlow: corrections-response', () => {
   it('fails clearly without Phase 1 artifacts', async () => {
     const { store } = fakeStore({});
     await assert.rejects(
-      runCrossBeamFlow(
+      runStructuraFlow(
         { ...IDS, files: [], flowType: 'corrections-response', city: 'Placentia' },
         { client: new SpyClient() as Client, store: store as any },
       ),
@@ -713,11 +713,11 @@ describe('runCrossBeamFlow: corrections-response', () => {
   });
 });
 
-describe('runCrossBeamFlow: city-review', () => {
+describe('runStructuraFlow: city-review', () => {
   it('writes the corrections letter columns and completes', async () => {
     const client = new SpyClient();
     const { store, log } = fakeStore(downloads());
-    await runCrossBeamFlow(
+    await runStructuraFlow(
       { ...IDS, files: [ANALYSIS_FILES[1]], flowType: 'city-review', city: 'Placentia' },
       { client: client as Client, store: store as any },
     );
@@ -733,7 +733,7 @@ describe('runCrossBeamFlow: city-review', () => {
   it('refuses to review a project with no plan pages', async () => {
     const { store } = fakeStore({ 'x/a.pdf': Buffer.from('%PDF') });
     await assert.rejects(
-      runCrossBeamFlow(
+      runStructuraFlow(
         { ...IDS, files: [{ filename: 'a.pdf', storage_path: 'x/a.pdf', file_type: 'plan-binder' }], flowType: 'city-review', city: 'Placentia' },
         { client: new SpyClient() as Client, store: store as any },
       ),

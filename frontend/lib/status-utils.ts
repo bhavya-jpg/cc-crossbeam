@@ -13,9 +13,9 @@ export function getStatusConfig(status: ProjectStatus): StatusConfig {
     case 'processing':
     case 'processing-phase1':
     case 'processing-phase2':
-      return { label: 'In Review', variant: 'secondary', className: 'bg-amber-100 text-amber-800 border-amber-200' }
+      return { label: 'In Review', variant: 'secondary', className: 'bg-warning/10 text-warning border-warning/30' }
     case 'awaiting-answers':
-      return { label: 'Awaiting Input', variant: 'secondary', className: 'bg-blue-100 text-blue-800 border-blue-200' }
+      return { label: 'Awaiting Input', variant: 'secondary', className: 'bg-primary/10 text-primary border-primary/30' }
     case 'ready':
     case 'uploading':
       return { label: 'Pending', variant: 'outline' }

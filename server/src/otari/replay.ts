@@ -3,7 +3,7 @@
  * request still goes to the gateway first; this runs only after a real
  * `402 insufficient_funds`, and turns off by itself once the account has funds.
  *
- * It replays real output recorded by an earlier CrossBeam run on the Placentia project
+ * It replays real output recorded by an earlier run of this pipeline on the Placentia project
  * in test-assets/correction-01. Telemetry and documents both say that no model ran, so
  * nothing here can be mistaken for a live completion or a real guardrail verdict.
  */
@@ -17,7 +17,7 @@ const ASSETS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../.
 const RECORDED_DIR = path.join(ASSETS_DIR, 'correction-01');
 
 export const RECORDED_BANNER =
-  '> **RECORDED SAMPLE.** From an earlier CrossBeam run on 1232 N Jefferson St, shown because Otari returned 402 insufficient_funds. No model produced this copy. Do not submit it to a building department.\n\n';
+  '> **RECORDED SAMPLE.** From an earlier recorded run on 1232 N Jefferson St, shown because Otari returned 402 insufficient_funds. No model produced this copy. Do not submit it to a building department.\n\n';
 
 const NOT_RUN = 'Not run: the gateway returned 402 insufficient_funds, so no model or tool was called.';
 

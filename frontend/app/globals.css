@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:is(.dark *));
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -27,8 +29,10 @@
   --color-warning-foreground: hsl(var(--warning-foreground));
   --color-info: hsl(var(--info));
   --color-info-foreground: hsl(var(--info-foreground));
-  --font-display: var(--font-display), Georgia, "Times New Roman", serif;
-  --font-body: var(--font-body), "Segoe UI", Tahoma, sans-serif;
+  --font-display: var(--font-display), Georgia, serif;
+  --font-body: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  --font-sans: var(--font-body), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -37,57 +41,46 @@
 }
 
 /* ==========================================
-   LIGHT MODE (DEFAULT) — Design Bible Palette
+   STRUCTURA — Swiss white, black type, one Klein blue accent.
+   Red is reserved for failovers, guardrail blocks and budget holds.
    ========================================== */
 :root {
-  /* Core */
-  --background: 212 100% 97%;        /* #F0F7FF - sky blue top */
-  --foreground: 24 10% 10%;          /* #1C1917 - deep earth */
+  --background: 0 0% 100%;             /* #FFFFFF */
+  --foreground: 0 0% 4%;               /* #0A0A0A */
 
-  /* Cards & Popovers */
-  --card: 150 50% 100%;              /* #FEFFFE - cloud white */
-  --card-foreground: 24 10% 10%;     /* #1C1917 */
-  --popover: 0 0% 100%;             /* white */
-  --popover-foreground: 24 10% 10%;  /* #1C1917 */
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 4%;
 
-  /* Primary: Moss Green */
-  --primary: 153 40% 30%;            /* #2D6A4F */
-  --primary-foreground: 136 100% 97%; /* #F0FFF4 */
+  --primary: 232 100% 56%;             /* #1F3BFF klein blue */
+  --primary-foreground: 0 0% 100%;
 
-  /* Secondary: Warm Soil Brown */
-  --secondary: 43 75% 31%;           /* #8B6914 */
-  --secondary-foreground: 55 92% 95%; /* #FEFCE8 */
+  --secondary: 0 0% 96%;               /* #F5F5F5 */
+  --secondary-foreground: 0 0% 9%;
 
-  /* Accent: Sunset Coral */
-  --accent: 13 84% 69%;              /* #F28B6E */
-  --accent-foreground: 16 76% 16%;   /* #4A1B0A */
+  --accent: 232 100% 97%;              /* blue tint for hovers */
+  --accent-foreground: 232 100% 40%;
 
-  /* Muted: Haze Blue */
-  --muted: 221 100% 94%;             /* #E0EAFF */
-  --muted-foreground: 215 16% 47%;   /* #64748B */
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;        /* #737373 */
 
-  /* Destructive: Autumn Red */
-  --destructive: 0 72% 51%;          /* #DC2626 */
-  --destructive-foreground: 0 0% 100%; /* white */
+  --destructive: 358 70% 48%;
+  --destructive-foreground: 0 0% 100%;
 
-  /* Borders & Inputs */
-  --border: 106 24% 80%;             /* #C6D9C0 - meadow edge */
-  --input: 106 24% 80%;              /* #C6D9C0 */
-  --ring: 153 40% 30%;               /* #2D6A4F - matches primary */
+  --border: 0 0% 90%;                  /* #E5E5E5 */
+  --input: 0 0% 85%;
+  --ring: 232 100% 56%;
 
-  /* Radius */
-  --radius: 1rem;
+  --radius: 0.375rem;
 
-  /* Status Colors */
-  --success: 153 40% 30%;            /* same as primary - moss green */
-  --success-foreground: 136 100% 97%;
-  --warning: 38 92% 50%;             /* amber */
-  --warning-foreground: 38 100% 10%;
-  --info: 212 80% 55%;               /* sky blue */
+  --success: 232 100% 56%;
+  --success-foreground: 0 0% 100%;
+  --warning: 358 75% 59%;              /* #E5484D */
+  --warning-foreground: 0 0% 100%;
+  --info: 232 100% 56%;
   --info-foreground: 0 0% 100%;
 }
-
-/* NO DARK MODE — light-only for hackathon. See DESIGN-BIBLE.md for twilight palette if needed later. */
 
 /* ==========================================
    BASE LAYER
@@ -110,37 +103,56 @@
 }
 
 /* ==========================================
-   SKY-TO-EARTH GRADIENT (Design Bible)
+   SURFACES
    ========================================== */
-.bg-crossbeam-gradient {
-  background: linear-gradient(180deg,
-    #F0F7FF 0%,       /* sky blue */
-    #FAFCFF 12%,
-    #FEFEFA 30%,      /* slightly warm white */
-    #FFFDF8 50%,      /* warm cream — pulled up */
-    #FAF3E8 68%,      /* warm earth — pulled up */
-    #E8DCC8 85%,      /* deep soil — pulled up */
-    #D9CCAF 100%      /* deeper soil at very bottom */
-  );
-  background-attachment: fixed;  /* CRITICAL: gradient stays fixed as page scrolls */
+.bg-structura {
+  background-color: #FFFFFF;
   min-height: 100vh;
 }
 
-/* ==========================================
-   TOPOGRAPHIC CONTOUR LINES (subtle sophistication)
-   ========================================== */
-.bg-topo-lines {
+/* Kept as a hook for pages that used the grid; Swiss layouts use whitespace instead. */
+.bg-grid {
   position: relative;
 }
-.bg-topo-lines::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cpath d='M0 200 Q100 180 200 200 T400 200' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3Cpath d='M0 160 Q100 140 200 160 T400 160' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3Cpath d='M0 240 Q100 260 200 240 T400 240' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3Cpath d='M0 120 Q100 100 200 120 T400 120' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3Cpath d='M0 280 Q100 300 200 280 T400 280' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3Cpath d='M0 80 Q150 60 250 80 T400 80' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3Cpath d='M0 320 Q150 340 250 320 T400 320' fill='none' stroke='%23D9CEBD' stroke-width='0.8'/%3E%3C/svg%3E");
-  background-size: 400px 400px;
-  opacity: 0.22;
-  pointer-events: none;
-  z-index: 0;
+
+.glass {
+  background: #FFFFFF;
+  border: 1px solid hsl(var(--border));
+}
+
+/* Data only: model IDs, latency, cost */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.font-serif-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 60s linear infinite;
+}
+
+/* Scroll reveal, set by components/landing/reveal.tsx */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal[data-shown='true'] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee { animation: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
 }
 
 /* ==========================================
@@ -206,25 +218,34 @@
    ========================================== */
 .heading-display {
   font-family: var(--font-display);
-  font-size: 2.5rem;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-weight: 900;
+  font-size: 2.75rem;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-weight: 400;
 }
 
 .heading-section {
   font-family: var(--font-display);
-  font-size: 1.5rem;
-  line-height: 1.2;
+  font-size: 1.875rem;
+  line-height: 1.1;
   letter-spacing: -0.02em;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .heading-card {
   font-family: var(--font-display);
-  font-size: 1.25rem;
-  line-height: 1.3;
-  font-weight: 700;
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  font-weight: 500;
+}
+
+/* Small label above a heading */
+.eyebrow {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
 }
 
 /* ==========================================
@@ -237,7 +258,7 @@
 
 .hover-lift:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(28, 25, 23, 0.12);
+  box-shadow: 0 12px 32px -12px rgba(10, 10, 10, 0.18);
 }
 
 /* ==========================================
@@ -265,15 +286,15 @@
 /* ==========================================
    PROSE STYLES (for rendering markdown output)
    ========================================== */
-.prose-crossbeam h1,
-.prose-crossbeam h2,
-.prose-crossbeam h3 {
+.prose-structura h1,
+.prose-structura h2,
+.prose-structura h3 {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
   color: hsl(var(--foreground));
 }
 
-.prose-crossbeam h1 {
+.prose-structura h1 {
   font-size: 1.5rem;
   font-weight: 700;
   margin-bottom: 1.25rem;
@@ -283,70 +304,71 @@
   border-left: 3px solid hsl(var(--primary));
 }
 
-.prose-crossbeam h1 + h2,
-.prose-crossbeam h1 + h2 + h3 {
+.prose-structura h1 + h2,
+.prose-structura h1 + h2 + h3 {
   margin-top: 0.5rem;
   color: hsl(var(--muted-foreground));
   font-size: 1rem;
   font-weight: 600;
 }
 
-.prose-crossbeam h2 {
+.prose-structura h2 {
   font-size: 1.25rem;
   font-weight: 700;
   margin-top: 2rem;
   margin-bottom: 0.875rem;
 }
 
-.prose-crossbeam h3 {
+.prose-structura h3 {
   font-size: 1.125rem;
   font-weight: 700;
   margin-top: 1.5rem;
   margin-bottom: 0.625rem;
 }
 
-.prose-crossbeam p {
+.prose-structura p {
   margin-bottom: 1rem;
   line-height: 1.75;
   color: hsl(var(--foreground));
 }
 
-.prose-crossbeam ul,
-.prose-crossbeam ol {
+.prose-structura ul,
+.prose-structura ol {
   margin-left: 1.25rem;
   margin-bottom: 1rem;
   padding-left: 0.5rem;
 }
 
-.prose-crossbeam li {
+.prose-structura li {
   margin-bottom: 0.5rem;
   line-height: 1.65;
 }
 
-.prose-crossbeam li::marker {
+.prose-structura li::marker {
   color: hsl(var(--primary));
 }
 
-.prose-crossbeam strong {
+.prose-structura strong {
   font-weight: 600;
   color: hsl(var(--foreground));
 }
 
-.prose-crossbeam code {
-  background: hsl(var(--primary) / 8%);
+.prose-structura code {
+  font-family: var(--font-mono);
+  background: hsl(var(--primary) / 12%);
   color: hsl(var(--primary));
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.875em;
 }
 
-.prose-crossbeam hr {
+.prose-structura hr {
   border: none;
   border-top: 1px solid hsl(var(--border) / 60%);
   margin: 1.25rem 0;
 }
 
-.prose-crossbeam blockquote {
+.prose-structura blockquote {
   border-left: 3px solid hsl(var(--primary) / 50%);
   padding-left: 1.25rem;
   margin: 1.5rem 0;
@@ -354,21 +376,22 @@
   color: hsl(var(--muted-foreground));
 }
 
-.prose-crossbeam table {
+.prose-structura table {
   width: 100%;
   margin: 1.5rem 0;
   border-collapse: collapse;
 }
 
-.prose-crossbeam th,
-.prose-crossbeam td {
+.prose-structura th,
+.prose-structura td {
   padding: 0.5rem 0.75rem;
   border: 1px solid hsl(var(--border));
   text-align: left;
 }
 
-.prose-crossbeam th {
+.prose-structura th {
   background: hsl(var(--muted));
+  color: hsl(var(--foreground));
   font-weight: 600;
 }
 

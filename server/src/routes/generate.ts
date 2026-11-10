@@ -8,7 +8,7 @@ import {
   getProject,
 } from '../services/supabase.js';
 import { contractorKey } from '../otari/contractor-keys.js';
-import { runCrossBeamFlow } from '../otari/runner.js';
+import { runStructuraFlow } from '../otari/runner.js';
 import { extractPdfForProject } from '../services/extract.js';
 import type { InternalFlowType } from '../utils/config.js';
 
@@ -109,7 +109,7 @@ async function processGeneration(
     if (!supabaseUrl || !supabaseKey) throw new Error('Supabase not configured');
 
     // Run the agent
-    await runCrossBeamFlow({
+    await runStructuraFlow({
       files,
       flowType,
       city,

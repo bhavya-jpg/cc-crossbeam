@@ -11,7 +11,8 @@ import { otari, OtariClient, type TraceSummary } from '../otari/client.js';
 import { DEMO_SCENARIOS, runDemoScenario, type DemoResult, type DemoScenario } from '../otari/demo.js';
 import { getTelemetryMessages } from '../services/supabase.js';
 
-const CONVERSATION_ID = /^crossbeam-(?:demo-)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$/i;
+// structura- for new runs; crossbeam- for runs recorded before the rename.
+const CONVERSATION_ID = /^(?:structura|crossbeam)-(?:demo-)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$/i;
 const TELEMETRY_PREFIX = '[OTARI_TELEMETRY] ';
 
 export function requireInspectorToken(req: Request, res: Response, next: NextFunction) {

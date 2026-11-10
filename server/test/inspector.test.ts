@@ -14,14 +14,14 @@ const { OtariClient } = await import('../src/otari/client.js');
 const { runDemoScenario } = await import('../src/otari/demo.js');
 const { createOtariRouter } = await import('../src/routes/otari.js');
 const { createCompatApp } = await import('../src/local/supabase-compat.js');
-const { runCrossBeamFlow } = await import('../src/otari/runner.js');
+const { runStructuraFlow } = await import('../src/otari/runner.js');
 const { listConversations, parseTelemetry, summarizeTelemetry } = await import('../../frontend/lib/otari-telemetry.js');
 
 const ENV_KEYS = [
   'OTARI_API_KEY', 'OTARI_MASTER_KEY', 'OTARI_DEMO_SIMULATION', 'OTARI_CONTRACTOR_KEY', 'OTARI_CONTRACTOR_KEY_LABEL',
   'OTARI_CONTRACTOR_BUDGET_USD', 'OTARI_EXHAUSTED_CONTRACTOR_KEY', 'OTARI_EXHAUSTED_CONTRACTOR_KEY_LABEL',
   'OTARI_INSPECTOR_TOKEN', 'OTARI_DEMO_CONTROLS', 'OTARI_DEMO_MODEL', 'OTARI_DEMO_UNAVAILABLE_MODEL',
-  'OTARI_MCP_PUBLIC_URL', 'OTARI_HYBRID_FALLBACK', 'NODE_ENV',
+  'OTARI_MCP_PUBLIC_URL', 'OTARI_PUBLIC_TOOLS_URL', 'OTARI_GUARDRAIL_URL', 'OTARI_HYBRID_FALLBACK', 'NODE_ENV',
 ];
 let savedEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
@@ -83,7 +83,7 @@ describe('budget refusals in a run', () => {
   it('stops on 402 insufficient_funds instead of trying every fallback', async () => {
     const { client, calls } = scriptedClient([NO_FUNDS]);
     const store = fakeStore();
-    await assert.rejects(runCrossBeamFlow(flow, { client, store: store as never }), /Insufficient funds/);
+    await assert.rejects(runStructuraFlow(flow, { client, store: store as never }), /Insufficient funds/);
 
     assert.equal(calls.length, 1);
     assert.deepEqual(store.statuses, []);
@@ -100,7 +100,7 @@ describe('budget refusals in a run', () => {
   it('stops on 403 budget_exceeded, and it is not mistaken for a guardrail block', async () => {
     const { client, calls } = scriptedClient([{ status: 403, body: { detail: 'API key has exceeded budget limit', code: 'budget_exceeded' }, headers: { 'Otari-Error-Code': 'budget_exceeded', 'Otari-Budget-Scope': 'api_token' } }]);
     const store = fakeStore();
-    await assert.rejects(runCrossBeamFlow(flow, { client, store: store as never }), /exceeded budget/);
+    await assert.rejects(runStructuraFlow(flow, { client, store: store as never }), /exceeded budget/);
 
     assert.equal(calls.length, 1);
     const [event] = eventsOf(store);
@@ -113,7 +113,7 @@ describe('budget refusals in a run', () => {
 describe('frontend contract with a full simulated run', () => {
   it('fills every panel, with no failover unless one happened', async () => {
     const store = fakeStore();
-    await runCrossBeamFlow({ files: [{ filename: 'corrections.png', storage_path: 'x', file_type: 'corrections-letter' }, { filename: 'page-001.png', storage_path: 'y', file_type: 'plan-binder' }], flowType: 'corrections-analysis', city: 'Placentia', projectId: PROJECT, userId: USER }, { client: new OtariClient({ simulation: true }), store: store as never });
+    await runStructuraFlow({ files: [{ filename: 'corrections.png', storage_path: 'x', file_type: 'corrections-letter' }, { filename: 'page-001.png', storage_path: 'y', file_type: 'plan-binder' }], flowType: 'corrections-analysis', city: 'Placentia', projectId: PROJECT, userId: USER }, { client: new OtariClient({ simulation: true }), store: store as never });
 
     const events = eventsOf(store);
     const summary = summarizeTelemetry(events);
@@ -269,7 +269,7 @@ describe('hybrid fallback', () => {
     process.env.OTARI_HYBRID_FALLBACK = 'true';
     const { client, calls } = scriptedClient([NO_FUNDS]);
     const store = fakeStore();
-    await runCrossBeamFlow(flow, { client, store: store as never });
+    await runStructuraFlow(flow, { client, store: store as never });
 
     assert.equal(calls[0].auth, 'Bearer workspace-secret');
     const events = eventsOf(store);
@@ -300,7 +300,7 @@ describe('hybrid fallback', () => {
     process.env.OTARI_HYBRID_FALLBACK = 'true';
     const { client } = scriptedClient([NO_FUNDS]);
     const store = fakeStore();
-    await runCrossBeamFlow({ ...flow, flowType: 'corrections-response', phase1Artifacts: { 'corrections_parsed.json': {} } }, { client, store: store as never });
+    await runStructuraFlow({ ...flow, flowType: 'corrections-response', phase1Artifacts: { 'corrections_parsed.json': {} } }, { client, store: store as never });
     const output = store.outputs[0] as Record<string, string>;
     for (const column of ['response_letter_md', 'professional_scope_md', 'corrections_report_md']) {
       assert.ok(output[column].startsWith('> **RECORDED SAMPLE.**'), column);
@@ -435,12 +435,12 @@ describe('local Supabase stand-in, through the real supabase-js client', () => {
   });
 
   it('signs in the demo user and rejects anything else', async () => {
-    const bad = await db.auth.signInWithPassword({ email: 'judge@crossbeam.local', password: 'wrong' });
+    const bad = await db.auth.signInWithPassword({ email: 'judge@structura.local', password: 'wrong' });
     assert.ok(bad.error);
-    const good = await db.auth.signInWithPassword({ email: 'judge@crossbeam.local', password: 'crossbeam-local' });
+    const good = await db.auth.signInWithPassword({ email: 'judge@structura.local', password: 'structura-local' });
     assert.equal(good.error, null);
     const { data } = await db.auth.getUser(good.data.session!.access_token);
-    assert.equal(data.user?.email, 'judge@crossbeam.local');
+    assert.equal(data.user?.email, 'judge@structura.local');
   });
 
   it('serves demo assets and stored uploads, and stays inside its folders', async () => {

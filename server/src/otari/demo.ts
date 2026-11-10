@@ -18,6 +18,7 @@ import {
   type ResponsesResponse,
 } from './client.js';
 import { contractorKey } from './contractor-keys.js';
+import { reachableGuardrailUrl } from './public-urls.js';
 import { INJECTION_TEST_LINE } from './prompts.js';
 import { attempt, guardrailsField, type RunContext, type RunnerStore } from './runner.js';
 
@@ -64,7 +65,7 @@ function demoContext(
   return {
     deps: { client, store: store as RunnerStore },
     options: { files: [], flowType: 'corrections-analysis', city: '', projectId, userId: '', apiKey, ...overrides },
-    runId: `crossbeam-demo-${projectId}-${Date.now()}`,
+    runId: `structura-demo-${projectId}-${Date.now()}`,
     simulated: client.isSimulating(apiKey),
     turns: 0,
     costUsd: 0,
@@ -102,7 +103,9 @@ async function guardrailBlock(ctx: RunContext): Promise<DemoOutput> {
       status: result.status,
       code: null,
       replay: result.replay,
-      message: 'The gateway served this request: no block-mode guardrail refused it. Check that a prompt-injection guardrail is available on this workspace.',
+      message: reachableGuardrailUrl()
+        ? 'The gateway served this request: our guardrail service did not flag it, or the gateway could not reach it. Check the tunnel and the Otari-Guardrails header.'
+        : 'The gateway served this request, because otari.ai has no guardrail service and ours has no public URL. Run scripts/tunnel.sh and set OTARI_PUBLIC_TOOLS_URL.',
     };
   } catch (error) {
     if (isGuardrailBlock(error)) {

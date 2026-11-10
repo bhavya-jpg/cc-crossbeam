@@ -1,5 +1,5 @@
 /**
- * A local stand-in for the parts of Supabase CrossBeam uses, so the app runs end to end
+ * A local stand-in for the parts of Supabase Structura uses, so the app runs end to end
  * with no external project. The real supabase-js clients talk to it unchanged: only
  * SUPABASE_URL differs. Data lives in server/.local-data (gitignored).
  *
@@ -18,7 +18,7 @@ const ASSETS_DIR = path.join(HERE, '../../../test-assets');
 const DEFAULT_DATA_DIR = path.join(HERE, '../../.local-data');
 const DEFAULT_PORT = 54321;
 
-const DEMO_USER = { id: '00000000-0000-4000-8000-000000000001', email: 'judge@crossbeam.local', password: 'crossbeam-local' };
+const DEMO_USER = { id: '00000000-0000-4000-8000-000000000001', email: 'judge@structura.local', password: 'structura-local' };
 const TABLES = ['projects', 'files', 'messages', 'outputs', 'contractor_answers'] as const;
 type Row = Record<string, unknown>;
 type Db = Record<string, Row[]>;
