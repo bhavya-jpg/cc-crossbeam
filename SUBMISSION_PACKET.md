@@ -55,9 +55,9 @@ Features cap at 60 points. Web search and MCP both need setup, so check you stil
 | Project name | CrossBeam |
 | One line | AI permit review for California ADUs, routed through Otari with open-weight models, guardrails, budgets and a live control-plane inspector |
 | Sign-up email | `<the email you registered with>` |
-| Public repo | https://github.com/bhavya-jpg/cc-crossbeam |
+| Public repo | https://github.com/bhavya-jpg/structura-otari |
 | Branch | `feat/otari-gateway` |
-| First Otari commit | [`c71d6ad`](https://github.com/bhavya-jpg/cc-crossbeam/commit/c71d6ad34de90b192e58913b471c384101e0af90) |
+| First Otari commit | [`c71d6ad`](https://github.com/bhavya-jpg/structura-otari/commit/c71d6ad34de90b192e58913b471c384101e0af90) |
 | Otari issues opened | `<links, once you file section 4>` |
 | Demo video | `<link>` |
 | Feedback | Section 5, and/or `<recording link>` |

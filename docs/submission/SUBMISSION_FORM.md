@@ -7,8 +7,8 @@ Structura
 Open-weight multi-agent plan check for California ADU permits, routed, guarded and metered through Mozilla Otari.
 
 ## GitHub repo
-https://github.com/bhavya-jpg/cc-crossbeam/tree/feat/otari-gateway
-(First Otari commit: https://github.com/bhavya-jpg/cc-crossbeam/commit/c71d6ad34de90b192e58913b471c384101e0af90)
+https://github.com/bhavya-jpg/structura-otari/tree/feat/otari-gateway
+(First Otari commit: https://github.com/bhavya-jpg/structura-otari/commit/c71d6ad34de90b192e58913b471c384101e0af90)
 
 ## Video
 <paste your YouTube link here>

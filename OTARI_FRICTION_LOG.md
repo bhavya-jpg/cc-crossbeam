@@ -1,7 +1,7 @@
 # Otari integration friction log
 
 Integrating Otari into CrossBeam (TypeScript, Express 5) for the Mozilla Devs Wilding Hackathon.
-First Otari commit: [`c71d6ad`](https://github.com/bhavya-jpg/cc-crossbeam/commit/c71d6ad34de90b192e58913b471c384101e0af90)
+First Otari commit: [`c71d6ad`](https://github.com/bhavya-jpg/structura-otari/commit/c71d6ad34de90b192e58913b471c384101e0af90)
 
 **Evidence levels.** *Observed* means we saw it on the wire. *Documented* means an Otari docs page says it.
 Live probes used no key, an invalid key, and (from 2026-11-04) a valid workspace key on an organization with no funds.

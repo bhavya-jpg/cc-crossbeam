@@ -10,7 +10,7 @@ export const BRAND = {
  * structura-otari repository exists; until then this points at the live branch.
  */
 export const REPO_URL =
-  process.env.NEXT_PUBLIC_REPO_URL || 'https://github.com/bhavya-jpg/cc-crossbeam/tree/feat/otari-gateway'
+  process.env.NEXT_PUBLIC_REPO_URL || 'https://github.com/bhavya-jpg/structura-otari/tree/feat/otari-gateway'
 
 /**
  * Public site mode, for a hosted build with no data store or agent server behind it: the landing
