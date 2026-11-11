@@ -4,7 +4,7 @@ import { GatewayShowcase } from '@/components/landing/gateway-showcase'
 import { Reveal } from '@/components/landing/reveal'
 import { OpenWorkspaceButton } from '@/components/open-workspace-button'
 import { StructuraMark } from '@/components/structura-mark'
-import { BRAND, REPO_URL } from '@/lib/brand'
+import { BRAND, PUBLIC_SITE, REPO_URL, RUN_LOCALLY_URL } from '@/lib/brand'
 import { RUN_FACTS } from '@/lib/recorded-run'
 
 const AGENTS = [
@@ -64,8 +64,8 @@ export default function LandingPage() {
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-2 text-muted-foreground transition-colors hover:text-foreground">
             Source <ArrowUpRightIcon className="size-3.5" aria-hidden />
           </a>
-          <Link href="/dashboard" className="ml-2 inline-flex h-9 items-center rounded-md border border-border px-3.5 font-medium transition-colors hover:border-foreground/30">
-            Dashboard
+          <Link href={PUBLIC_SITE ? RUN_LOCALLY_URL : '/dashboard'} className="ml-2 inline-flex h-9 items-center rounded-md border border-border px-3.5 font-medium transition-colors hover:border-foreground/30">
+            {PUBLIC_SITE ? 'Run locally' : 'Dashboard'}
           </Link>
         </div>
       </nav>

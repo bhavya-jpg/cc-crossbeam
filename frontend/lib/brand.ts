@@ -11,3 +11,10 @@ export const BRAND = {
  */
 export const REPO_URL =
   process.env.NEXT_PUBLIC_REPO_URL || 'https://github.com/bhavya-jpg/cc-crossbeam/tree/feat/otari-gateway'
+
+/**
+ * Public site mode, for a hosted build with no data store or agent server behind it: the landing
+ * page works in full, and the workspace links send people to the run-it-locally instructions.
+ */
+export const PUBLIC_SITE = process.env.NEXT_PUBLIC_STRUCTURA_PUBLIC_SITE === 'true'
+export const RUN_LOCALLY_URL = `${REPO_URL}#run-it-locally`

@@ -6,6 +6,7 @@ import { ArrowRightIcon, Loader2Icon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { JUDGE_CONTRACTOR_PROJECT_ID } from '@/lib/app-mode'
 import { LOCAL_DEMO_USER, LOCAL_MODE } from '@/lib/local-mode'
+import { PUBLIC_SITE, RUN_LOCALLY_URL } from '@/lib/brand'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -43,6 +44,27 @@ export function OpenWorkspaceButton({ className, label = 'Open Live Permit Revie
       setError(err instanceof Error ? err.message : 'Could not open the workspace')
       setBusy(false)
     }
+  }
+
+  const look = cn(
+    'group inline-flex h-11 items-center gap-2 rounded-md px-5 text-sm font-medium transition-colors disabled:opacity-70',
+    variant === 'primary'
+      ? 'bg-primary text-primary-foreground hover:bg-[#1630D6]'
+      : 'border border-border bg-background text-foreground hover:border-foreground/30',
+    className,
+  )
+
+  // The hosted site has no agent server; the workspace runs locally with your own Otari key.
+  if (PUBLIC_SITE) {
+    return (
+      <span className="inline-flex flex-col items-start gap-1.5">
+        <a href={RUN_LOCALLY_URL} target="_blank" rel="noopener noreferrer" className={look}>
+          Run the workspace locally
+          <ArrowRightIcon className="size-4 transition-transform duration-300 group-hover:translate-x-0.5" aria-hidden />
+        </a>
+        <span className="text-xs opacity-60">One script, your own Otari key</span>
+      </span>
+    )
   }
 
   return (

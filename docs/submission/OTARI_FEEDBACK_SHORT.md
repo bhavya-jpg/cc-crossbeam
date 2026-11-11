@@ -1,0 +1,5 @@
+Worked well: stable error codes (402 vs over-budget became clear holds), inline usage.cost_usd (first live run: 14 items, 14 calls, $0.21), code containers reused across turns via otari-container-id, and visible fallback (backup served on attempt 2). GET /models and /tools are very helpful.
+
+Didn't work: non-streamed calls over ~30 s return CloudFront's HTML 504 with no Otari-Request-ID (streaming fixed it, undocumented). otari.ai has no hosted guardrails (not_configured), and streams omit the Otari-Guardrails header. Traces reject a valid workspace key ("Invalid master key"). A $0 account returns 402 for everything, so nothing can be tested.
+
+Missing: a no-spend test mode, hosted guardrails that also scan images (our letter is a scan), per-request cross-model fallback, and trace and budget reads with an API key. Details: OTARI_FRICTION_LOG.md in our repo.

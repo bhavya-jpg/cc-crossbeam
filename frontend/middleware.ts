@@ -2,6 +2,15 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
+  // The hosted public site has no data store: only the landing page is served.
+  if (process.env.NEXT_PUBLIC_STRUCTURA_PUBLIC_SITE === 'true') {
+    if (request.nextUrl.pathname === '/') return NextResponse.next()
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
+
   const { supabaseResponse, user } = await updateSession(request)
 
   // Protected routes - require authentication
